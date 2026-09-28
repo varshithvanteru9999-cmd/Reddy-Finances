@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vehicle — Reddy Finances</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,500;1,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/premium.css">
+</head>
+<body class="detail-page">
+
+<!-- brand band, sitting above the video rather than over it -->
+<div class="brand-bar">
+  <div class="shell">
+    <a href="index.html" aria-label="Reddy Finances — home">
+      <img src="images/brand/logo.png" width="1692" height="930"
+           alt="Reddy Finances" decoding="async">
+    </a>
+  </div>
+</div>
+
+<!-- header, menu and footer are built by js/ui.js -->
+<header class="site-header"></header>
+<div class="menu-panel" id="menuPanel"></div>
+
+<!-- filled in by js/car.js from the ?id= query parameter -->
+<main class="detail" id="detail"></main>
+
+<footer class="site-footer" id="contact"></footer>
+
+<script src="js/data.js"></script>
+<script src="js/billing.js"></script>
+<script src="js/store.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/car.js"></script>
+</body>
+</html>

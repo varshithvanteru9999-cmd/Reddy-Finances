@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0B0C0E">
+<link rel="apple-touch-icon" href="/images/icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Reddy Finances">
+  <title>Sign Contract - Reddy Finances</title>
+  <link rel="stylesheet" href="css/style.css?v=20260922f">
+  <script>
+    // Apply theme early to prevent flash
+    (function() {
+      const savedTheme = localStorage.getItem('theme') || 'light';
+      const root = document.documentElement;
+      if (savedTheme === 'dark') {
+        root.classList.add('dark');
+      } else if (savedTheme === 'light') {
+        root.classList.remove('dark');
+      } else {
+        // system
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          root.classList.add('dark');
+        } else {
+          root.classList.remove('dark');
+        }
+      }
+    })();
+  </script>
+  <style>
+    .contract-container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+    .contract-header {
+      text-align: center;
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid #c0392b;
+    }
+    .contract-header h1 {
+      color: #1a1a2e;
+      margin-bottom: 10px;
+    }
+    .contract-header .ref {
+      color: #666;
+      font-size: 14px;
+    }
+    .contract-info {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 30px;
+    }
+    .contract-info h3 {
+      color: #1a1a2e;
+      margin-bottom: 15px;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 10px;
+    }
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+    }
+    .info-item {
+      display: flex;
+      flex-direction: column;
+    }
+    .info-item label {
+      font-size: 12px;
+      color: #666;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .info-item span {
+      font-weight: 500;
+      color: #333;
+    }
+    .upload-section {
+      background: white;
+      border: 2px dashed #ddd;
+      border-radius: 8px;
+      padding: 30px;
+      margin-bottom: 20px;
+      transition: border-color 0.3s;
+    }
+    .upload-section.drag-over {
+      border-color: #c0392b;
+      background: #fdf2f2;
+    }
+    .upload-section h3 {
+      color: #1a1a2e;
+      margin-bottom: 10px;
+    }
+    .upload-section p {
+      color: #666;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+    .file-input-wrapper {
+      position: relative;
+      display: inline-block;
+      width: 100%;
+    }
+    .file-input-wrapper input[type="file"] {
+      position: absolute;
+      opacity: 0;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+    .file-input-label {
+      display: block;
+      padding: 15px 20px;
+      background: #f8f9fa;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.3s;
+      text-align: center;
+    }
+    .file-input-label:hover {
+      background: #eef;
+      border-color: #c0392b;
+    }
+    .file-input-label.has-file {
+      background: #e8f5e9;
+      border-color: #27ae60;
+      color: #27ae60;
+    }
+    .file-name {
+      margin-top: 10px;
+      font-size: 13px;
+      color: #333;
+    }
+    .required-badge {
+      color: #c0392b;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .btn-group {
+      display: flex;
+      gap: 15px;
+      justify-content: center;
+      margin-top: 30px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      padding: 12px 30px;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      border: none;
+      font-size: 16px;
+    }
+    .btn-primary {
+      background: #c0392b;
+      color: white;
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: #a93226;
+    }
+    .btn-primary:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .btn-secondary {
+      background: #f8f9fa;
+      color: #333;
+      border: 1px solid #ddd;
+    }
+    .btn-secondary:hover {
+      background: #eef;
+    }
+    .status-message {
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      display: none;
+    }
+    .status-message.success {
+      display: block;
+      background: #e8f5e9;
+      border: 1px solid #27ae60;
+      color: #27ae60;
+    }
+    .status-message.error {
+      display: block;
+      background: #fdf2f2;
+      border: 1px solid #c0392b;
+      color: #c0392b;
+    }
+    .status-message.info {
+      display: block;
+      background: #eef;
+      border: 1px solid #3498db;
+      color: #3498db;
+    }
+    .checkbox-group {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin: 20px 0;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 6px;
+    }
+    .checkbox-group input {
+      margin-top: 3px;
+    }
+    .checkbox-group label {
+      font-size: 14px;
+      color: #333;
+      line-height: 1.5;
+    }
+    .checkbox-group a {
+      color: #c0392b;
+      text-decoration: underline;
+    }
+    .progress-steps {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 30px;
+      position: relative;
+    }
+    .progress-steps::before {
+      content: '';
+      position: absolute;
+      top: 15px;
+      left: 10%;
+      right: 10%;
+      height: 2px;
+      background: #ddd;
+      z-index: 1;
+    }
+    .step {
+      position: relative;
+      z-index: 2;
+      text-align: center;
+      flex: 1;
+    }
+    .step-circle {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: #ddd;
+      border: 2px solid #ddd;
+      margin: 0 auto 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #999;
+      font-weight: 600;
+      transition: all 0.3s;
+    }
+    .step.active .step-circle {
+      background: #c0392b;
+      border-color: #c0392b;
+      color: white;
+    }
+    .step.completed .step-circle {
+      background: #27ae60;
+      border-color: #27ae60;
+      color: white;
+    }
+    .step-label {
+      font-size: 13px;
+      color: #666;
+    }
+    .step.active .step-label {
+      color: #c0392b;
+      font-weight: 600;
+    }
+    .step.completed .step-label {
+      color: #27ae60;
+    }
+    .pdf-preview {
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+    .pdf-preview iframe {
+      width: 100%;
+      height: 500px;
+      border: none;
+    }
+    @media (max-width: 600px) {
+      .contract-container {
+        padding: 20px 15px;
+      }
+      .progress-steps::before {
+        left: 5%;
+        right: 5%;
+      }
+    }
+    /* ---------------- added for e-signing ---------------- */
+
+    /* The header is fixed and overlaps the page, so push the whole
+       container clear of it rather than letting step 1 sit under the logo. */
+    .contract-container { padding-top: 84px; }
+    .progress-steps { margin-top: 8px; }
+
+    /* Label / value pairs in the booking summary. */
+    .detail-card { margin-bottom: 22px; }
+    .detail-row {
+      display: flex; justify-content: space-between; gap: 18px;
+      padding: 9px 0; border-bottom: 1px solid #eeeef1;
+      font-size: 13.5px;
+    }
+    .detail-row:last-child { border-bottom: 0; }
+    .detail-label { color: #6a6a70; font-weight: 600; flex: 0 0 auto; }
+    .detail-row > span:last-child { text-align: right; word-break: break-word; }
+
+    /* An empty <img> still draws its alt text and border — keep it out
+       of the layout until a file is actually chosen. */
+    .lic-preview[hidden] { display: none !important; }
+
+    .actions { display: flex; gap: 12px; margin-top: 22px; }
+    .terms-checkbox { display: flex; gap: 10px; align-items: flex-start; margin-top: 22px; font-size: 13px; line-height: 1.5; }
+    .terms-checkbox input { margin-top: 3px; flex: 0 0 auto; }
+
+    .sec-title { font-size: 15px; font-weight: 700; letter-spacing: .02em; margin: 0 0 4px; }
+    .sec-note  { font-size: 12.5px; color: #666; margin: 0 0 14px; line-height: 1.5; }
+
+    .terms-scroll {
+      max-height: 320px; overflow-y: auto;
+      border: 1px solid #e2e2e5; border-radius: 10px;
+      padding: 18px 20px; background: #fcfcfd;
+      font-size: 13px; line-height: 1.62;
+    }
+    .terms-scroll:focus-visible { outline: 2px solid #c0392b; outline-offset: 2px; }
+    .terms-scroll h3 { font-size: 13.5px; margin: 0 0 8px; }
+    .terms-scroll .head-term {
+      font-weight: 700; margin: 0 0 6px; padding-left: 14px;
+      position: relative;
+    }
+    .terms-scroll .head-term::before {
+      content: ''; position: absolute; left: 0; top: 8px;
+      width: 5px; height: 5px; border-radius: 50%; background: #c0392b;
+    }
+    .terms-scroll ol { margin: 14px 0 0; padding-left: 22px; }
+    .terms-scroll li { margin-bottom: 9px; }
+    .terms-scroll .note { display: block; color: #6a6a70; font-style: italic; margin-top: 3px; }
+    .loading-terms { color: #888; font-style: italic; margin: 0; }
+
+    /* signature method tabs */
+    .sign-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+    .sign-tab {
+      flex: 1 1 auto; min-width: 130px;
+      padding: 10px 14px; font: inherit; font-size: 13px; font-weight: 600;
+      border: 1px solid #d8d8dc; border-radius: 999px;
+      background: #fff; color: #444; cursor: pointer;
+      transition: background .18s, color .18s, border-color .18s;
+    }
+    .sign-tab:hover { border-color: #c0392b; color: #c0392b; }
+    .sign-tab.active { background: #c0392b; border-color: #c0392b; color: #fff; }
+
+    /* drawing pad */
+    .pad-wrap {
+      position: relative; border: 1px solid #d8d8dc; border-radius: 10px;
+      background: #fff; overflow: hidden;
+    }
+    #sigPad { display: block; width: 100%; height: 200px; touch-action: none; cursor: crosshair; }
+    .pad-baseline {
+      position: absolute; left: 8%; right: 8%; bottom: 46px;
+      border-bottom: 1px dashed #c9c9cf; pointer-events: none;
+    }
+    .pad-hint {
+      position: absolute; left: 8%; bottom: 52px;
+      font-size: 12px; color: #b6b6bd; pointer-events: none;
+      transition: opacity .2s;
+    }
+    .pad-hint.gone { opacity: 0; }
+    .pad-actions { display: flex; justify-content: flex-end; margin-top: 10px; margin-bottom: 4px; }
+    .pad-actions .btn { box-shadow: none; }
+
+    .btn-sm { padding: 7px 16px; font-size: 12.5px; }
+
+    /* typed signature */
+    .text-input {
+      width: 100%; padding: 11px 14px; font: inherit; font-size: 14px;
+      border: 1px solid #d8d8dc; border-radius: 8px; background: #fff; color: #1a1a2e;
+    }
+    .text-input:focus { outline: none; border-color: #c0392b; box-shadow: 0 0 0 3px rgba(192,57,43,.12); }
+    .text-input[readonly] { background: #f4f4f6; color: #666; }
+    .typed-preview {
+      margin-top: 14px; min-height: 62px;
+      display: flex; align-items: center; justify-content: center;
+      border: 1px dashed #d8d8dc; border-radius: 10px; background: #fcfcfd;
+      font-family: 'Segoe Script', 'Brush Script MT', cursive;
+      font-size: 30px; color: #1a1a2e;
+    }
+
+    .name-date-row { display: flex; gap: 14px; margin-top: 18px; flex-wrap: wrap; }
+    .ndl { flex: 1 1 200px; font-size: 12.5px; font-weight: 600; color: #555; }
+    .ndl .text-input { margin-top: 6px; font-weight: 400; }
+
+    .lic-preview {
+      display: block; margin-top: 14px; max-height: 220px;
+      border-radius: 10px; border: 1px solid #e2e2e5;
+    }
+
+    @media (max-width: 620px) {
+      .sign-tab { min-width: 0; flex: 1 1 100%; }
+      #sigPad { height: 170px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <a href="index.html" class="logo" aria-label="Reddy Finances home">
+        <svg viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">
+          <rect x="2" y="8" width="28" height="18" rx="3" fill="#1a1a2e"/>
+          <path d="M6 16h20M6 20h14" stroke="#c0392b" stroke-width="2.5" stroke-linecap="round"/>
+          <circle cx="26" cy="16" r="3" fill="#c0392b"/>
+        </svg>
+        <span>Reddy Finances</span>
+      </a>
+    </div>
+  </header>
+
+  <main class="contract-container">
+    <div class="progress-steps">
+      <div class="step completed" data-step="1">
+        <div class="step-circle">1</div>
+        <div class="step-label">Read agreement</div>
+      </div>
+      <div class="step active" data-step="2">
+        <div class="step-circle">2</div>
+        <div class="step-label">Sign</div>
+      </div>
+      <div class="step" data-step="3">
+        <div class="step-circle">3</div>
+        <div class="step-label">Driver license</div>
+      </div>
+      <div class="step" data-step="4">
+        <div class="step-circle">4</div>
+        <div class="step-label">Done</div>
+      </div>
+    </div>
+
+    <div class="contract-header">
+      <h1 id="docTitle">Rental Agreement</h1>
+      <div class="ref">Reference: <strong id="bookingRef">&mdash;</strong></div>
+    </div>
+
+    <div id="statusMessage" class="status-message"></div>
+
+    <!-- ------------------------- booking summary ------------------------- -->
+    <section class="detail-card" aria-labelledby="sumHead">
+      <h2 id="sumHead" class="sec-title">Your booking</h2>
+      <div class="detail-row"><span class="detail-label">Vehicle</span><span id="vehicleInfo">&mdash;</span></div>
+      <div class="detail-row"><span class="detail-label">Rental period</span><span id="rentalPeriod">&mdash;</span></div>
+      <div class="detail-row"><span class="detail-label">Monthly rate</span><span id="monthlyRate">&mdash;</span></div>
+      <div class="detail-row"><span class="detail-label">Name</span><span id="customerName">&mdash;</span></div>
+      <div class="detail-row"><span class="detail-label">Email</span><span id="customerEmail">&mdash;</span></div>
+      <div class="detail-row"><span class="detail-label">Phone</span><span id="customerPhone">&mdash;</span></div>
+    </section>
+
+    <!-- ---------------------------- the terms ---------------------------- -->
+    <section class="detail-card" aria-labelledby="termsHead">
+      <h2 id="termsHead" class="sec-title">Terms you are agreeing to</h2>
+      <p class="sec-note">This is the full agreement. The PDF you sign contains exactly this wording.</p>
+      <div class="terms-scroll" id="termsBox" tabindex="0" role="region" aria-label="Contract terms">
+        <p class="loading-terms">Loading the agreement&hellip;</p>
+      </div>
+      <p class="sec-note">
+        Prefer a PDF? <a href="#" id="previewLink" target="_blank" rel="noopener">Open the agreement as a PDF</a>
+      </p>
+    </section>
+
+    <!-- --------------------------- signature ----------------------------- -->
+    <section class="detail-card" aria-labelledby="signHead">
+      <h2 id="signHead" class="sec-title">Your signature</h2>
+      <p class="sec-note">Choose whichever suits you. All three are equally valid.</p>
+
+      <div class="sign-tabs" role="tablist" aria-label="Signature method">
+        <button type="button" class="sign-tab active" role="tab" data-method="draw"   aria-selected="true">Draw it</button>
+        <button type="button" class="sign-tab"        role="tab" data-method="upload" aria-selected="false">Upload a signed copy</button>
+      </div>
+
+      <!-- draw -->
+      <div class="sign-panel" id="panel-draw">
+        <p class="sec-note">Sign with your finger or mouse in the box below.</p>
+        <div class="pad-wrap">
+          <canvas id="sigPad" width="620" height="200" aria-label="Signature drawing area"></canvas>
+          <span class="pad-baseline" aria-hidden="true"></span>
+          <span class="pad-hint" id="padHint">Sign here</span>
+        </div>
+        <div class="pad-actions">
+          <button type="button" class="btn btn-secondary btn-sm" id="clearPad">Clear</button>
+        </div>
+      </div>
+
+      <!-- upload -->
+      <div class="sign-panel" id="panel-upload" hidden>
+        <p class="sec-note">Print the PDF, sign it by hand, then upload the scan or photo.</p>
+        <div class="file-input-wrapper">
+          <input type="file" id="contractFile" accept=".pdf,.jpg,.jpeg,.png">
+          <span class="file-input-label" id="contractLabel">Choose or drop your signed agreement</span>
+        </div>
+        <div class="file-name" id="contractFileName"></div>
+      </div>
+
+      <div class="name-date-row">
+        <label class="ndl">Full name
+          <input type="text" id="fullName" class="text-input" placeholder="As it appears on your license" autocomplete="name">
+        </label>
+        <label class="ndl">Date
+          <input type="text" id="signDate" class="text-input" readonly>
+        </label>
+      </div>
+    </section>
+
+    <!-- ------------------------- driver license -------------------------- -->
+    <section class="detail-card" aria-labelledby="licHead">
+      <h2 id="licHead" class="sec-title">Driver license</h2>
+      <p class="sec-note">A clear photo or scan. Any common image format, or a PDF.</p>
+      <div class="file-input-wrapper">
+        <input type="file" id="licenseFile" accept="image/*,.pdf" required>
+        <span class="file-input-label" id="licenseLabel">Choose or drop your driver license</span>
+      </div>
+      <div class="file-name" id="licenseFileName"></div>
+      <img id="licensePreview" class="lic-preview" alt="Driver license preview" hidden>
+    </section>
+
+    <!-- ---------------------------- consent ------------------------------ -->
+    <div class="terms-checkbox">
+      <input type="checkbox" id="termsAccept" required>
+      <label for="termsAccept">
+        I have read and agree to every term of this rental agreement, and I intend
+        my electronic signature to be legally binding.
+      </label>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="submitBtn" disabled>
+        <span id="submitText">Sign &amp; submit</span>
+      </button>
+      <a class="btn btn-secondary" href="index.html" id="cancelBtn">Cancel</a>
+    </div>
+  </main>
+
+  <script>
+  /* ------------------------------------------------------------------
+     Sign page. Three ways to sign — draw, type, or upload a scan — and
+     a driver-license upload. The signed PDF is produced on the server
+     from database values, so nothing here can alter the terms.
+  ------------------------------------------------------------------- */
+
+  const params = new URLSearchParams(location.search);
+  const REF = params.get('ref') || '';
+
+  const $ = id => document.getElementById(id);
+  const statusBox = $('statusMessage');
+
+  let method = 'draw';
+  let hasDrawing = false;
+  let booking = null;
+
+  /* --------------------------- helpers --------------------------- */
+
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  function say(text, kind) {
+    statusBox.textContent = text;
+    statusBox.className = 'status-message ' + (kind || '');
+    statusBox.style.display = text ? 'block' : 'none';
+    if (text) statusBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  const money = n => '$' + Number(n || 0).toLocaleString('en-US');
+
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => {
+        const s = String(r.result);
+        resolve({ name: file.name, type: file.type, size: file.size, data: s.split(',').pop() });
+      };
+      r.onerror = () => reject(new Error('Could not read that file'));
+      r.readAsDataURL(file);
+    });
+  }
+
+  /* ------------------------ load the terms ----------------------- */
+
+  async function loadTerms() {
+    try {
+      const t = await fetch('/api/contracts/terms').then(r => r.json());
+      $('docTitle').textContent = t.title || 'Rental Agreement';
+      $('termsBox').innerHTML =
+        t.headerTerms.map(h => `<p class="head-term">${esc(h)}</p>`).join('') +
+        '<ol>' + t.clauses.map(c =>
+          `<li>${esc(c.text)}${(c.notes || []).map(n => `<span class="note">${esc(n)}</span>`).join('')}</li>`
+        ).join('') + '</ol>';
+    } catch {
+      $('termsBox').innerHTML = '<p class="loading-terms">Could not load the agreement. Please refresh.</p>';
+    }
+  }
+
+  /* ---------------------- load the booking ----------------------- */
+
+  async function loadBooking() {
+    if (!REF) { say('No booking reference in the link.', 'error'); return; }
+    $('bookingRef').textContent = REF;
+    $('previewLink').href = `/api/contracts/preview?ref=${encodeURIComponent(REF)}`;
+
+    try {
+      /* The customer-scoped list — /api/bookings is administrators only
+         and would 403 here. */
+      const res = await fetch('/api/bookings/mine');
+      if (res.status === 401 || res.status === 403 || res.status === 503) {
+        /* Not signed in — the summary needs an account, the terms do not. */
+        say('Please sign in with the email address on your booking to continue.', 'error');
+        return;
+      }
+      const rows = await res.json();
+      booking = Array.isArray(rows) ? rows.find(b => b.id === REF) : null;
+      if (!booking) return;
+
+      $('vehicleInfo').textContent   =
+        [booking.vehicleYear, booking.vehicleName].filter(Boolean).join(' ') || booking.carId || '—';
+      $('rentalPeriod').textContent  = `${booking.from} to ${booking.to}`;
+      $('monthlyRate').textContent   = booking.monthlyRate ? money(booking.monthlyRate) + ' / month' : '—';
+      $('customerName').textContent  = booking.name || '—';
+      $('customerEmail').textContent = booking.email || '—';
+      $('customerPhone').textContent = booking.phone || '—';
+      if (booking.name && !$('fullName').value) $('fullName').value = booking.name;
+      refresh();
+    } catch {
+      /* The summary is a convenience; signing still works without it. */
+    }
+  }
+
+  /* -------------------------- signature pad ---------------------- */
+
+  const pad = $('sigPad');
+  const ctx = pad.getContext('2d');
+
+  /* Match the backing store to the CSS size, or strokes land offset
+     from the cursor on a high-DPI screen. */
+  function sizePad() {
+    const rect = pad.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const data = hasDrawing ? pad.toDataURL() : null;
+    pad.width = Math.round(rect.width * dpr);
+    pad.height = Math.round(rect.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#12121c';
+    if (data) {
+      const img = new Image();
+      img.onload = () => ctx.drawImage(img, 0, 0, rect.width, rect.height);
+      img.src = data;
+    }
+  }
+
+  let drawing = false;
+  const pos = e => {
+    const r = pad.getBoundingClientRect();
+    const p = e.touches ? e.touches[0] : e;
+    return { x: p.clientX - r.left, y: p.clientY - r.top };
+  };
+
+  function start(e) {
+    e.preventDefault();
+    drawing = true;
+    const { x, y } = pos(e);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    if (!hasDrawing) { hasDrawing = true; $('padHint').classList.add('gone'); }
+  }
+  function move(e) {
+    if (!drawing) return;
+    e.preventDefault();
+    const { x, y } = pos(e);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  }
+  function stop() { drawing = false; refresh(); }
+
+  pad.addEventListener('mousedown', start);
+  pad.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', stop);
+  pad.addEventListener('touchstart', start, { passive: false });
+  pad.addEventListener('touchmove', move, { passive: false });
+  pad.addEventListener('touchend', stop);
+
+  $('clearPad').addEventListener('click', () => {
+    ctx.clearRect(0, 0, pad.width, pad.height);
+    hasDrawing = false;
+    $('padHint').classList.remove('gone');
+    refresh();
+  });
+
+  window.addEventListener('resize', sizePad);
+
+  /* ----------------------------- tabs ---------------------------- */
+
+  document.querySelectorAll('.sign-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      method = tab.dataset.method;
+      document.querySelectorAll('.sign-tab').forEach(t => {
+        const on = t === tab;
+        t.classList.toggle('active', on);
+        t.setAttribute('aria-selected', String(on));
+      });
+      ['draw', 'upload'].forEach(m => { $('panel-' + m).hidden = (m !== method); });
+      if (method === 'draw') sizePad();
+      refresh();
+    });
+  });
+
+  /* The typed-signature option was removed: a name set in a script
+     face is not a signature, and this agreement is the document a
+     dispute would turn on. A renter draws it or uploads a signed copy. */
+
+  /* --------------------------- file inputs ----------------------- */
+
+  function wireFile(input, label, nameBox, preview) {
+    const base = label.textContent;
+    input.addEventListener('change', () => {
+      const f = input.files[0];
+      nameBox.textContent = f ? f.name : '';
+      label.textContent = f ? 'File selected — click to change' : base;
+      if (preview) {
+        if (f && /^image\//.test(f.type)) {
+          preview.src = URL.createObjectURL(f);
+          preview.hidden = false;
+        } else {
+          preview.hidden = true;
+        }
+      }
+      refresh();
+    });
+  }
+  wireFile($('contractFile'), $('contractLabel'), $('contractFileName'), null);
+  wireFile($('licenseFile'), $('licenseLabel'), $('licenseFileName'), $('licensePreview'));
+
+  /* ------------------------- enable/disable ---------------------- */
+
+  function signatureReady() {
+    if (method === 'draw')   return hasDrawing;
+    return $('contractFile').files.length > 0;
+  }
+
+  function refresh() {
+    const ok = signatureReady()
+            && $('licenseFile').files.length > 0
+            && $('termsAccept').checked
+            && $('fullName').value.trim().length > 1;
+    $('submitBtn').disabled = !ok;
+  }
+
+  $('termsAccept').addEventListener('change', refresh);
+  $('fullName').addEventListener('input', refresh);
+
+  /* ---------------------------- submit --------------------------- */
+
+  $('submitBtn').addEventListener('click', async () => {
+    const btn = $('submitBtn');
+    btn.disabled = true;
+    $('submitText').textContent = 'Submitting…';
+    say('');
+
+    try {
+      /* 1. the signature */
+      if (method === 'upload') {
+        const signed = await fileToBase64($('contractFile').files[0]);
+        await post('/api/contracts/upload', { bookingRef: REF, contractFile: signed });
+      } else {
+        await post('/api/contracts/sign', {
+          bookingRef: REF,
+          accepted: true,
+          method,
+          signature: method === 'draw' ? pad.toDataURL('image/png') : null,
+          /* The printed name beside the signature. It comes from the
+             form's own full-name field now that the typed-signature
+             option is gone. */
+          typedName: $('fullName').value.trim()
+        });
+      }
+
+      /* 2. the licence, always */
+      const lic = await fileToBase64($('licenseFile').files[0]);
+      await post('/api/contracts/upload', { bookingRef: REF, licenseFile: lic });
+
+      document.querySelector('.step[data-step="4"]').classList.add('completed');
+      say('Thank you — your signed agreement and driver license have been received. '
+        + 'We will confirm your booking shortly.', 'success');
+      $('submitText').textContent = 'Submitted';
+      document.querySelectorAll('.sign-tab, input, #clearPad').forEach(el => { el.disabled = true; });
+    } catch (err) {
+      say(err.message || 'Something went wrong. Please try again.', 'error');
+      $('submitText').textContent = 'Sign & submit';
+      btn.disabled = false;
+    }
+  });
+
+  async function post(url, body) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      let msg = `Request failed (${res.status})`;
+      try { msg = (await res.json()).error || msg; } catch {}
+      throw new Error(msg);
+    }
+    return res.json().catch(() => ({}));
+  }
+
+  /* ----------------------------- boot ---------------------------- */
+
+  $('signDate').value = new Date().toISOString().slice(0, 10);
+  sizePad();
+  loadTerms();
+  loadBooking();
+  refresh();
+  </script>
+<script>
+  /* Registers the service worker so the site is installable and opens
+     without a connection. Failure is non-fatal: the site works without it. */
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js').catch(function () {});
+    });
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0B0C0E">
+<link rel="apple-touch-icon" href="/images/icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Reddy Finances">
+  <title>My Profile — Reddy Finances</title>
+  <link rel="stylesheet" href="css/style.css?v=20260922f">
+  <script>
+    // Apply theme early to prevent flash
+    (function () {
+      const savedTheme = localStorage.getItem('theme') || 'light';
+      const root = document.documentElement;
+      if (savedTheme === 'dark') root.classList.add('dark');
+      else if (savedTheme === 'light') root.classList.remove('dark');
+      else if (window.matchMedia('(prefers-color-scheme: dark)').matches) root.classList.add('dark');
+      else root.classList.remove('dark');
+    })();
+  </script>
+  <style>
+    /* Inline SVGs carry only a viewBox — without a size they fill the page. */
+    [data-icon] svg { width: 1em; height: 1em; display: inline-block; vertical-align: middle; }
+
+    .profile-wrap { max-width: 760px; margin: 0 auto; padding: 44px 20px 64px; }
+
+    .page-head { margin-bottom: 26px; }
+    .page-head h1 {
+      font-family: var(--display);
+      font-size: clamp(30px, 4.4vw, 44px);
+      margin: 0 0 6px;
+      letter-spacing: -.01em;
+    }
+    .page-head p { margin: 0; font-size: 13.5px; color: var(--text-muted); }
+
+    /* --------------------------- tabs --------------------------- */
+    .tab-nav {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 22px;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .tab-btn {
+      position: relative;
+      padding: 12px 4px;
+      margin-right: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      background: none;
+      border: 0;
+      cursor: pointer;
+      text-decoration: none;
+      transition: color .25s var(--ease);
+    }
+    .tab-btn::after {
+      content: '';
+      position: absolute;
+      left: 0; right: 0; bottom: -1px;
+      height: 2px;
+      background: var(--red);
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform .28s var(--ease);
+    }
+    .tab-btn:hover { color: var(--text-primary); }
+    .tab-btn.active { color: var(--text-primary); }
+    .tab-btn.active::after { transform: scaleX(1); }
+
+    /* ------------------------ identity ------------------------- */
+    /* The signed-in identity, lifted onto its own banner so the page
+       opens with the person rather than a form. */
+    .identity {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding: 26px 28px;
+      margin-bottom: 18px;
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      background: var(--bg-card);
+      overflow: hidden;
+    }
+    .identity::before {
+      content: '';
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--red) 0%, rgba(223,0,0,.25) 44%, transparent 78%);
+    }
+
+    .avatar {
+      position: relative;
+      flex: 0 0 auto;
+      width: 78px; height: 78px;
+      border-radius: 50%;
+      overflow: hidden;
+      background: var(--bg-secondary);
+      display: grid;
+      place-items: center;
+      font-family: var(--display);
+      font-size: 30px;
+      font-weight: 700;
+      color: var(--text-muted);
+      box-shadow: 0 0 0 1px var(--border-color), 0 6px 18px rgba(16,20,26,.12);
+    }
+    .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .avatar svg { width: 38px; height: 38px; }
+
+    .identity-text { min-width: 0; }
+    .identity-text h2 {
+      font-family: var(--display);
+      font-size: 23px;
+      font-weight: 700;
+      margin: 0 0 3px;
+      line-height: 1.2;
+      overflow-wrap: anywhere;
+    }
+    .identity-text .mail {
+      margin: 0;
+      font-size: 13.5px;
+      color: var(--text-muted);
+      overflow-wrap: anywhere;
+    }
+    .identity-badges { display: flex; gap: 7px; margin-top: 10px; flex-wrap: wrap; }
+    .idb {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 11px;
+      border-radius: 999px;
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      background: var(--bg-secondary);
+    }
+    .idb.ok { color: #0f7a4a; border-color: rgba(15,122,74,.35); background: rgba(15,122,74,.08); }
+    .idb.todo { color: #9a6a10; border-color: rgba(226,160,63,.42); background: rgba(226,160,63,.12); }
+
+    /* ------------------------- panels -------------------------- */
+    .panel {
+      padding: 26px 28px 28px;
+      margin-bottom: 18px;
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      background: var(--bg-card);
+    }
+    .panel-title {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 4px;
+    }
+    .panel-title h3 {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      margin: 0;
+      color: var(--text-primary);
+    }
+    .panel-note {
+      margin: 0 0 22px;
+      font-size: 12.5px;
+      line-height: 1.55;
+      color: var(--text-muted);
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 16px;
+    }
+    .field label {
+      display: block;
+      margin-bottom: 7px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .field input {
+      width: 100%;
+      padding: 12px 14px;
+      font-family: var(--font);
+      font-size: 14px;
+      color: var(--text-primary);
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      transition: border-color .2s var(--ease), box-shadow .2s var(--ease);
+    }
+    .field input:focus {
+      outline: none;
+      border-color: var(--red);
+      box-shadow: 0 0 0 3px rgba(223, 0, 0, .12);
+    }
+    .field input[readonly] { background: var(--bg-secondary); color: var(--text-muted); cursor: default; }
+    .field input[readonly]:focus { border-color: var(--border-color); box-shadow: none; }
+    .field .hint { display: block; margin-top: 6px; font-size: 11.5px; color: var(--text-muted); }
+    .uc { text-transform: uppercase; }
+
+    .form-foot {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 12px;
+      margin-top: 22px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border-color);
+    }
+    .save-status { margin-right: auto; font-size: 12.5px; min-height: 18px; }
+    .save-status.ok { color: #0f7a4a; }
+    .save-status.err { color: var(--red); }
+
+    /* The stylesheet has no global [hidden] rule, and .btn sets its own
+       display — so hidden buttons would still show without this. */
+    [hidden] { display: none !important; }
+
+    /* The shared .btn is text-only; give the form's two buttons a visible
+       edge so they read as controls. Same palette, no new colours. */
+    .form-foot .btn {
+      min-height: 44px;
+      padding: 10px 26px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-primary);
+    }
+    .form-foot #saveBtn {
+      border-color: var(--red);
+      color: var(--red);
+    }
+    .form-foot #saveBtn:not([disabled]):hover {
+      background: var(--red);
+      color: #fff;
+    }
+    .form-foot #cancelBtn:hover { border-color: var(--text-primary); color: var(--text-primary); }
+
+    /* Nothing to save yet reads as inactive rather than broken. */
+    #saveBtn[disabled] {
+      opacity: .42;
+      cursor: default;
+      box-shadow: none;
+      transform: none;
+    }
+    #saveBtn[disabled]:hover { transform: none; box-shadow: none; }
+
+    /* The shared avatar styles add a brand ring that suits the small
+       header chip but reads as an error state at this size. */
+    .avatar, .avatar.user-avatar-fallback { border: 0; }
+
+    /* ------------------------ shortcuts ------------------------ */
+    .links { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+    .link-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 18px;
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      background: var(--bg-primary);
+      text-decoration: none;
+      color: inherit;
+      transition: border-color .22s var(--ease), transform .22s var(--ease), box-shadow .22s var(--ease);
+    }
+    .link-card:hover {
+      border-color: var(--red);
+      transform: translateY(-2px);
+      box-shadow: 0 10px 24px rgba(16,20,26,.10);
+    }
+    .link-card b { display: block; font-size: 13.5px; margin-bottom: 2px; }
+    .link-card span { font-size: 12px; color: var(--text-muted); }
+    .link-card .go { color: var(--red); font-size: 17px; line-height: 1; }
+
+    .foot-link { text-align: center; margin-top: 30px; font-size: 13px; }
+    .foot-link a { color: var(--red); text-decoration: none; }
+    .foot-link a:hover { text-decoration: underline; }
+
+    .gate { text-align: center; padding: 64px 20px; color: var(--text-muted); }
+    .gate p { margin: 0 0 8px; }
+
+    @media (max-width: 560px) {
+      .identity { flex-direction: column; align-items: flex-start; text-align: left; }
+      .form-foot { flex-wrap: wrap; }
+      .save-status { width: 100%; margin-bottom: 6px; }
+    }
+  </style>
+</head>
+<body style="background: var(--bg-primary); min-height: 100vh;">
+
+<main class="profile-wrap">
+  <div class="page-head">
+    <h1>My Profile</h1>
+    <p>Your account details, licence and bookings.</p>
+  </div>
+
+  <nav class="tab-nav" role="tablist" aria-label="Profile sections">
+    <a role="tab" class="tab-btn active" href="profile.html" aria-selected="true">Account</a>
+    <a role="tab" class="tab-btn" href="bookings.html" aria-selected="false">Bookings</a>
+  </nav>
+
+  <div id="content" hidden>
+    <!-- who is signed in -->
+    <section class="identity">
+      <div class="avatar" id="avatar" aria-hidden="true"></div>
+      <div class="identity-text">
+        <h2 id="pDisplayName">&nbsp;</h2>
+        <p class="mail" id="pDisplayEmail"></p>
+        <div class="identity-badges" id="badges"></div>
+      </div>
+    </section>
+
+    <!-- editable details -->
+    <section class="panel">
+      <div class="panel-title"><h3>Your details</h3></div>
+      <p class="panel-note">
+        These are used on your rental agreement, so keep them matching your licence.
+      </p>
+
+      <form id="profileForm" novalidate>
+        <div class="field-grid">
+          <div class="field">
+            <label for="pName">Full name</label>
+            <input type="text" id="pName" name="name" autocomplete="name" required>
+          </div>
+          <div class="field">
+            <label for="pEmail">Email address</label>
+            <input type="email" id="pEmail" name="email" readonly>
+            <span class="hint">Comes from your Google account</span>
+          </div>
+          <div class="field">
+            <label for="pPhone">Phone</label>
+            <input type="tel" id="pPhone" name="phone" autocomplete="tel" placeholder="(214) 555-0134" maxlength="14">
+          </div>
+          <div class="field">
+            <label for="pLicense">Driver licence number</label>
+            <input type="text" id="pLicense" name="licenseNumber" class="uc"
+                   placeholder="TX12345678" maxlength="40">
+            <span class="hint">Required before you collect a rental</span>
+          </div>
+        </div>
+
+        <div class="form-foot">
+          <span class="save-status" id="saveStatus" role="status"></span>
+          <button type="button" class="btn btn-ghost" id="cancelBtn" hidden>Cancel</button>
+          <button type="submit" class="btn btn-red rb" id="saveBtn" disabled>Save changes</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- shortcuts -->
+    <section class="panel">
+      <div class="panel-title"><h3>Shortcuts</h3></div>
+      <p class="panel-note">Everything else about your account.</p>
+      <div class="links">
+        <a class="link-card" href="bookings.html">
+          <span><b>My bookings</b><span id="bookingCount">View your reservations</span></span>
+          <span class="go" aria-hidden="true">&rarr;</span>
+        </a>
+        <a class="link-card" href="index.html#fleet">
+          <span><b>Browse the fleet</b><span>Cars to rent or buy</span></span>
+          <span class="go" aria-hidden="true">&rarr;</span>
+        </a>
+      </div>
+    </section>
+  </div>
+
+  <div class="gate" id="gate">
+    <p>Loading your profile&hellip;</p>
+  </div>
+
+  <p class="foot-link"><a href="index.html">&larr; Back to home</a></p>
+</main>
+
+<!-- plain scripts: these files export nothing, so `import` would fail -->
+<script src="js/data.js"></script>
+<script src="js/billing.js?v=20260921t"></script>
+<script src="js/store.js?v=20260921t"></script>
+<script src="js/ui.js?v=20260922f"></script>
+<script src="js/auth.js?v=20260923b"></script>
+<script>
+  const $ = id => document.getElementById(id);
+  let original = {};
+
+  function initial(name, email) {
+    const src = (name || email || 'U').trim();
+    return src ? src[0].toUpperCase() : 'U';
+  }
+
+  async function start() {
+    const user = await refreshAuth();
+
+    if (!user) {
+      $('gate').innerHTML =
+        '<p style="font-size:16px;">Please sign in to see your profile.</p>'
+        + '<p style="font-size:13px;">Use the account button in the header.</p>'
+        + '<p style="margin-top:16px;"><a class="btn btn-red" href="index.html">Go to the home page</a></p>';
+      return;
+    }
+
+    /* The picture Google gave us at sign-in. If it fails to load (an
+       expired URL, or none set) fall back to the initial. */
+    const avatar = $('avatar');
+    if (user.picture) {
+      const img = new Image();
+      img.alt = '';
+      img.onload = () => { avatar.textContent = ''; avatar.appendChild(img); };
+      /* A broken or expired picture URL falls back to the profile icon. */
+      img.onerror = () => { avatar.innerHTML = ICON.user; };
+      img.src = user.picture;
+    } else {
+      avatar.innerHTML = ICON.user;
+    }
+
+    $('pDisplayName').textContent = user.name || 'Your account';
+    $('pDisplayEmail').textContent = user.email || '';
+    $('pEmail').value = user.email || '';
+    $('pName').value = user.name || '';
+
+    /* Their saved record, which may differ from the Google profile. */
+    let customer = null;
+    try {
+      const res = await fetch('/api/auth/profile');
+      if (res.ok) customer = (await res.json()).customer;
+    } catch { /* the form still works, just unprefilled */ }
+
+    if (customer) {
+      $('pName').value = customer.full_name || user.name || '';
+      $('pPhone').value = customer.phone || '';
+      $('pLicense').value = customer.license_number || '';
+    }
+    original = {
+      name: $('pName').value,
+      phone: $('pPhone').value,
+      licenseNumber: $('pLicense').value
+    };
+
+    renderBadges(user);
+    countBookings();
+    wireForm();
+
+    $('gate').hidden = true;
+    $('content').hidden = false;
+  }
+
+  function renderBadges(user) {
+    const out = [`<span class="idb ok">Signed in</span>`];
+    out.push($('pLicense').value
+      ? '<span class="idb ok">Licence on file</span>'
+      : '<span class="idb todo">Licence needed</span>');
+    if (user.email) out.push('<span class="idb">Google account</span>');
+    $('badges').innerHTML = out.join('');
+  }
+
+  /* A live count reads better than a generic label. */
+  async function countBookings() {
+    try {
+      const rows = await loadMyBookings();
+      const n = Array.isArray(rows) ? rows.length : 0;
+      $('bookingCount').textContent = n
+        ? `${n} booking${n === 1 ? '' : 's'}`
+        : 'No bookings yet';
+    } catch { /* leave the default label */ }
+  }
+
+  function wireForm() {
+    const form = $('profileForm');
+    const save = $('saveBtn');
+    const cancel = $('cancelBtn');
+    const status = $('saveStatus');
+    const fields = ['pName', 'pPhone', 'pLicense'];
+
+    initPhoneInput($('pPhone'));
+
+    const current = () => ({
+      name: $('pName').value.trim(),
+      phone: $('pPhone').value.trim(),
+      licenseNumber: $('pLicense').value.trim().toUpperCase()
+    });
+    const dirty = () => JSON.stringify(current()) !== JSON.stringify(original);
+
+    const refresh = () => {
+      const changed = dirty();
+      save.disabled = !changed;
+      cancel.hidden = !changed;
+      if (!changed) status.textContent = '';
+    };
+
+    fields.forEach(id => $(id).addEventListener('input', refresh));
+
+    cancel.addEventListener('click', () => {
+      $('pName').value = original.name;
+      $('pPhone').value = original.phone;
+      $('pLicense').value = original.licenseNumber;
+      status.textContent = '';
+      status.className = 'save-status';
+      refresh();
+    });
+
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      if (!dirty()) return;
+
+      const payload = current();
+      if (!payload.name) {
+        status.textContent = 'Please enter your name.';
+        status.className = 'save-status err';
+        return;
+      }
+      if (payload.phone && !validUSPhone(payload.phone)) {
+        status.textContent = 'Enter a valid 10-digit US phone number, e.g. (214) 555-0134.';
+        status.className = 'save-status err';
+        return;
+      }
+
+      save.disabled = true;
+      save.textContent = 'Saving…';
+      status.textContent = '';
+      status.className = 'save-status';
+
+      try {
+        const res = await fetch('/api/auth/profile', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: payload.name,
+            phone: payload.phone || null,
+            licenseNumber: payload.licenseNumber || null
+          })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not save your changes.');
+
+        original = { ...payload };
+        $('pDisplayName').textContent = payload.name;
+        $('pLicense').value = payload.licenseNumber;
+        renderBadges({ email: $('pEmail').value });
+        status.textContent = 'Saved';
+        status.className = 'save-status ok';
+        cancel.hidden = true;
+      } catch (err) {
+        status.textContent = err.message;
+        status.className = 'save-status err';
+      } finally {
+        save.textContent = 'Save changes';
+        save.disabled = !dirty();
+      }
+    });
+  }
+
+  start();
+</script>
+<script>
+  /* Registers the service worker so the site is installable and opens
+     without a connection. Failure is non-fatal: the site works without it. */
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js')
+        .then(function (reg) { try { reg.update(); } catch (e) {} })
+        .catch(function () {});
+
+      /* This page shows one customer's own data and used to be part of
+         the offline shell, so an older worker may still be holding a
+         copy. A stale one renders whatever was cached — often nothing —
+         however many times the page is reloaded, so it is evicted here
+         rather than left for the viewer to clear by hand. */
+      if (window.caches && caches.keys) {
+        caches.keys().then(function (names) {
+          names.forEach(function (n) {
+            caches.open(n).then(function (c) {
+              c.keys().then(function (reqs) {
+                reqs.forEach(function (r) {
+                  if (/\/(bookings|profile)\.html/.test(r.url)) c.delete(r);
+                });
+              });
+            });
+          });
+        }).catch(function () {});
+      }
+    });
+  }
+</script>
+</body>
+</html>

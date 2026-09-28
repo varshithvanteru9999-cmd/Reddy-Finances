@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0B0C0E">
+<link rel="apple-touch-icon" href="/images/icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Reddy Finances">
+<title>Admin sign in — Reddy Finances</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,500;1,600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --red: #DF0000;
+    --ink: #0B0C0E;
+    --panel: rgba(18, 20, 23, .88);
+    --line: rgba(255, 255, 255, .13);
+    --line-2: rgba(255, 255, 255, .24);
+    --text: #FFFFFF;
+    --text-2: rgba(255, 255, 255, .68);
+    --text-3: rgba(255, 255, 255, .42);
+    --display: 'Archivo', 'Arial Narrow', Helvetica, sans-serif;
+    --font: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --ease: cubic-bezier(.22, .61, .36, 1);
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: var(--ink);
+    color: var(--text-2);
+    font-family: var(--font);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* The same city clip the dashboard uses, so signing in feels like
+     part of the product rather than a bolted-on form. */
+  .backdrop { position: fixed; inset: 0; z-index: -2; overflow: hidden; background: var(--ink); }
+  .backdrop video { width: 100%; height: 100%; object-fit: cover; }
+  .backdrop::after {
+    content: '';
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(120% 80% at 50% 0%, rgba(223,0,0,.14) 0%, transparent 62%),
+      linear-gradient(180deg, rgba(8,9,11,.90) 0%, rgba(8,9,11,.95) 100%);
+  }
+
+  .card {
+    position: relative;
+    width: min(420px, 100%);
+    padding: 40px 38px 34px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, .55);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    overflow: hidden;
+  }
+  .card::before {
+    content: '';
+    position: absolute; inset: 0 0 auto 0; height: 2px;
+    background: linear-gradient(90deg, var(--red) 0%, rgba(223,0,0,.2) 42%, transparent 78%);
+  }
+
+  .brand { text-align: center; margin-bottom: 30px; }
+  .brand .name {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-style: italic;
+    font-size: 27px;
+    color: #fff;
+    display: block;
+    line-height: 1.1;
+  }
+  .brand .tag {
+    display: inline-block;
+    margin-top: 9px;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: .26em;
+    text-transform: uppercase;
+    color: var(--red);
+  }
+
+  h1 {
+    margin: 0 0 6px;
+    font-family: var(--display);
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: #fff;
+  }
+  .sub { margin: 0 0 24px; font-size: 12.5px; line-height: 1.55; color: var(--text-3); }
+
+  label {
+    display: block;
+    margin-bottom: 7px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--text-2);
+  }
+  .field { margin-bottom: 18px; }
+  .field-box { position: relative; }
+
+  input {
+    width: 100%;
+    padding: 13px 15px;
+    font: inherit;
+    font-size: 14px;
+    color: #fff;
+    background: rgba(255, 255, 255, .05);
+    border: 1px solid var(--line-2);
+    border-radius: 10px;
+    transition: border-color .2s var(--ease), background .2s var(--ease);
+  }
+  input::placeholder { color: rgba(255, 255, 255, .3); }
+  input:focus {
+    outline: none;
+    border-color: var(--red);
+    background: rgba(255, 255, 255, .08);
+    box-shadow: 0 0 0 3px rgba(223, 0, 0, .16);
+  }
+  input[type="password"] { padding-right: 62px; letter-spacing: .08em; }
+
+  .peek {
+    position: absolute;
+    top: 50%; right: 12px;
+    transform: translateY(-50%);
+    padding: 5px 8px;
+    font: inherit;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    background: none;
+    border: 0;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .peek:hover { color: #fff; }
+
+  .btn {
+    width: 100%;
+    margin-top: 6px;
+    padding: 14px 20px;
+    font: inherit;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: #fff;
+    background: var(--red);
+    border: 0;
+    border-radius: 999px;
+    cursor: pointer;
+    box-shadow: 0 6px 20px rgba(223, 0, 0, .3);
+    transition: transform .18s var(--ease), box-shadow .18s var(--ease), opacity .18s;
+  }
+  .btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 10px 26px rgba(223,0,0,.4); }
+  .btn:disabled { opacity: .55; cursor: default; box-shadow: none; }
+
+  .msg {
+    margin: 0 0 18px;
+    padding: 11px 14px;
+    border-radius: 10px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    border-left: 3px solid var(--red);
+    background: rgba(223, 0, 0, .12);
+    color: #ffd7d7;
+  }
+
+  .foot {
+    margin-top: 24px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+    text-align: center;
+    font-size: 11.5px;
+    color: var(--text-3);
+  }
+  .foot a { color: var(--text-2); text-decoration: none; }
+  .foot a:hover { color: var(--red); }
+
+  :focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+</style>
+</head>
+<body>
+
+<div class="backdrop">
+  <video autoplay muted loop playsinline preload="auto">
+    <source src="images/video/city.webm" type="video/webm">
+  </video>
+</div>
+
+<main class="card">
+  <div class="brand">
+    <span class="name">Reddy Finances</span>
+    <span class="tag">Administration</span>
+  </div>
+
+  <h1>Sign in</h1>
+  <p class="sub">This area manages the fleet, bookings and customer records.</p>
+
+  <p class="msg" id="msg" hidden></p>
+
+  <form id="loginForm" novalidate>
+    <div class="field">
+      <label for="email">Email address</label>
+      <div class="field-box">
+        <input id="email" type="email" autocomplete="username"
+               placeholder="you@example.com" required autofocus>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="password">Password</label>
+      <div class="field-box">
+        <input id="password" type="password" autocomplete="current-password"
+               placeholder="Your password" required>
+        <button class="peek" type="button" id="peek" aria-label="Show password">Show</button>
+      </div>
+    </div>
+
+    <button class="btn" type="submit" id="submitBtn">Sign in</button>
+  </form>
+
+  <p class="foot"><a href="index.html">&larr; Back to the website</a></p>
+</main>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const form = $('loginForm');
+  const msg = $('msg');
+  const btn = $('submitBtn');
+
+  /* Where to go after signing in — only ever a path on this site, so a
+     crafted ?next=https://evil.example cannot redirect the admin away. */
+  function safeNext() {
+    const raw = new URLSearchParams(location.search).get('next') || 'admin.html';
+    return /^[A-Za-z0-9._-]+\.html(?:[?#].*)?$/.test(raw) ? raw : 'admin.html';
+  }
+
+  function fail(text) {
+    msg.textContent = text;
+    msg.hidden = false;
+  }
+
+  $('peek').addEventListener('click', () => {
+    const p = $('password');
+    const showing = p.type === 'text';
+    p.type = showing ? 'password' : 'text';
+    $('peek').textContent = showing ? 'Show' : 'Hide';
+    $('peek').setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+    p.focus();
+  });
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    msg.hidden = true;
+
+    const email = $('email').value.trim();
+    const password = $('password').value;
+    if (!email || !password) return fail('Please enter both your email and password.');
+
+    btn.disabled = true;
+    btn.textContent = 'Signing in…';
+    try {
+      const res = await fetch('/api/auth/admin-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Sign-in failed.');
+      location.href = safeNext();
+    } catch (err) {
+      fail(err.message);
+      btn.disabled = false;
+      btn.textContent = 'Sign in';
+      $('password').value = '';
+      $('password').focus();
+    }
+  });
+
+  /* Already signed in as an admin? Skip the form. */
+  fetch('/api/auth/me')
+    .then(r => r.json())
+    .then(d => { if (d.user && d.user.admin) location.replace(safeNext()); })
+    .catch(() => {});
+</script>
+<script>
+  /* Registers the service worker so the site is installable and opens
+     without a connection. Failure is non-fatal: the site works without it. */
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js').catch(function () {});
+    });
+  }
+</script>
+</body>
+</html>

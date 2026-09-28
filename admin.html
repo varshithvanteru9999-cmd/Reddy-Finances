@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0B0C0E">
+<link rel="apple-touch-icon" href="/images/icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Reddy Finances">
+<title>Admin — Reddy Finances</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,500;1,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/admin.css?v=20260921v">
+</head>
+<body>
+
+<!-- city clip, fixed so it covers the page top to bottom -->
+<div class="backdrop">
+  <video autoplay muted loop playsinline preload="auto">
+    <source src="images/video/city.webm" type="video/webm">
+  </video>
+</div>
+
+<header class="admin-top">
+  <div class="shell">
+    <div class="admin-brand">
+      <span class="name">Reddy Finances</span>
+      <span class="tag">Admin</span>
+    </div>
+
+    <nav class="tabs" role="tablist" aria-label="Dashboard sections">
+      <button class="tab" role="tab" data-tab="overview" aria-selected="true">Overview</button>
+      <button class="tab" role="tab" data-tab="fleet"    aria-selected="false">Fleet</button>
+      <button class="tab" role="tab" data-tab="bookings" aria-selected="false">Bookings</button>
+      <button class="tab" role="tab" data-tab="release"  aria-selected="false">Release</button>
+      <button class="tab" role="tab" data-tab="pending"  aria-selected="false">Pending list</button>
+      <button class="tab" role="tab" data-tab="photos"   aria-selected="false">Photos</button>
+      <button class="tab" role="tab" data-tab="actions"  aria-selected="false">Actions</button>
+    </nav>
+
+    <div class="admin-actions">
+      <button class="to-site admin-install" id="installApp" type="button" hidden>Install app</button>
+      <span class="notif-wrap" id="notifWrap"></span>
+      <button class="to-site admin-logout" id="adminLogout" type="button">Sign out</button>
+    </div>
+  </div>
+</header>
+
+<main class="page">
+  <div class="shell">
+
+    <!-- ========================== OVERVIEW ========================== -->
+    <section id="panel-overview" role="tabpanel">
+      <div class="kpi-row" id="kpiRow"></div>
+
+      <div class="viz-grid">
+        <figure class="card viz-wide">
+          <figcaption>
+            <h3>Revenue by month</h3>
+            <p>Booked value of every rental starting that month. Cancelled bookings excluded.</p>
+          </figcaption>
+          <div class="viz-plot" id="chartRevenue"></div>
+        </figure>
+
+        <figure class="card">
+          <figcaption>
+            <h3>Fleet by category</h3>
+            <p>How the inventory splits across body styles.</p>
+          </figcaption>
+          <div class="viz-plot" id="chartFleet"></div>
+        </figure>
+
+        <figure class="card">
+          <figcaption>
+            <h3>Bookings by status</h3>
+            <p>Where every reservation currently sits.</p>
+          </figcaption>
+          <div class="viz-plot" id="chartStatus"></div>
+        </figure>
+
+        <section class="card viz-wide">
+          <figcaption>
+            <h3>Coming up</h3>
+            <p>The next pick-ups and returns, soonest first.</p>
+          </figcaption>
+          <ul class="timeline" id="timeline"></ul>
+        </section>
+      </div>
+    </section>
+
+    <!-- ============================ FLEET =========================== -->
+    <section id="panel-fleet" role="tabpanel" hidden>
+      <div class="stats" id="fleetStats"></div>
+
+      <div class="panel-head">
+        <div>
+          <h2>Fleet</h2>
+          <p>Names, photos and prices. Changes are written to MySQL and show on the public site straight away.</p>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-line btn-sm" id="fleetExport">Export CSV</button>
+          <button class="btn btn-line btn-sm" id="fleetReset">Reload</button>
+          <button class="btn btn-red" id="fleetAdd">Add vehicle</button>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <label class="search">
+          <span class="sr-only" hidden>Search fleet</span>
+          <span data-icon="search"></span>
+          <input type="search" id="fleetSearch" placeholder="Search name, trim or city&hellip;">
+        </label>
+        <select id="fleetType" style="max-width:190px">
+          <option value="all">All types</option>
+          <option value="rental">For rent</option>
+          <option value="sale">For sale</option>
+        </select>
+        <select id="fleetCat" style="max-width:190px">
+          <option value="all">All categories</option>
+        </select>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Vehicle</th><th>Type</th><th>Category</th>
+              <th>Price</th><th>Location</th><th>Odometer</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="fleetRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ========================== BOOKINGS ========================== -->
+    <section id="panel-bookings" role="tabpanel" hidden>
+      <!-- Which period the figures below cover. The row is one set of
+           numbers, re-cut rather than repeated. -->
+      <div class="period-tabs" role="group" aria-label="Figures period">
+        <button type="button" class="period-tab is-on" data-period="all">All time</button>
+        <button type="button" class="period-tab" data-period="year">Year to date</button>
+        <button type="button" class="period-tab" data-period="month">Current month</button>
+      </div>
+
+      <div class="stats stats-sm" id="bookingStats"></div>
+
+      <div class="panel-head">
+        <div>
+          <h2>Bookings</h2>
+          <p>Who booked what, and for how long. Contact details are shown as given &mdash; email or phone.</p>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-line btn-sm" id="bookExport">Export CSV</button>
+          <button class="btn btn-line btn-sm" id="bookReset">Reload</button>
+          <button class="btn btn-red" id="bookAdd">Add booking</button>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <label class="search">
+          <span data-icon="search"></span>
+          <input type="search" id="bookSearch" placeholder="Search name, email, phone or ref&hellip;">
+        </label>
+        <select id="bookStatus" style="max-width:190px">
+          <option value="all">All statuses</option>
+        </select>
+        <button class="btn btn-line btn-sm" id="bookAll" type="button" title="Show everything up to &amp; including the selected month">All</button>
+        <select id="bookMonth" style="max-width:170px">
+          <option value="all">All months</option>
+        </select>
+        <select id="bookYear" style="max-width:140px">
+          <option value="all">All years</option>
+        </select>
+        <button class="btn btn-line btn-sm" id="tollImport" type="button"
+                title="Upload a toll statement and apply the charges by vehicle number">
+          Import tolls
+        </button>
+        <input type="file" id="tollFile" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Ref</th><th>Customer</th><th>Contact</th><th>License</th><th>Vehicle</th>
+              <th>From</th><th>To</th><th>Days</th><th>Rental</th><th>Tolls</th><th>Total</th><th>Paid</th><th>Pending</th>
+              <th>Month</th><th>Status</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="bookRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============================ RELEASE =========================== -->
+    <section id="panel-release" role="tabpanel" hidden>
+      <div class="stats" id="releaseStats"></div>
+
+      <div class="panel-head">
+        <div>
+          <h2>Release</h2>
+          <p>A car out on rent is closed to new customers. Once its renter gives
+             10 days notice of return, release it here and the next customer can
+             pre-book it &mdash; even before it is back.</p>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-line btn-sm" id="releaseReload">Reload</button>
+        </div>
+      </div>
+
+      <!-- how the flow runs, so the office never has to guess the order -->
+      <ol class="flow-steps">
+        <li><span class="flow-n">1</span><b>On rent</b><span>Car is out. Nobody else can book it.</span></li>
+        <li><span class="flow-n">2</span><b>Notice given</b><span>Renter says when they will return it.</span></li>
+        <li><span class="flow-n">3</span><b>Released</b><span>You open it &mdash; pre-booking starts.</span></li>
+        <li><span class="flow-n">4</span><b>Queued</b><span>Customers line up; confirm one.</span></li>
+      </ol>
+
+      <section class="card viz-wide" style="margin-bottom:14px">
+        <figcaption>
+          <h3>Booked cars</h3>
+          <p>Every car currently spoken for &mdash; who has it, the dates, and the
+             amount owed. Release one to open it for pre-booking on the customer site.</p>
+        </figcaption>
+        <ul class="release-list booked-list" id="onRentList"></ul>
+      </section>
+
+      <section class="card viz-wide">
+        <figcaption>
+          <h3>Pre-booking queue</h3>
+          <p>Customers waiting for a released car, in the order they asked.
+             Send the confirmation to move one into Bookings.</p>
+        </figcaption>
+        <ul class="release-list" id="queueList"></ul>
+      </section>
+
+      <!-- kept for the release/queue refresh path; the booked list above
+           now covers what this used to show -->
+      <ul class="release-list" id="releaseList" hidden></ul>
+    </section>
+
+    <!-- ============================ PHOTOS ============================ -->
+    <!-- ========================= PENDING ========================== -->
+    <section id="panel-pending" role="tabpanel" hidden>
+      <div class="stats stats-sm" id="pendingStats"></div>
+
+      <div class="panel-head">
+        <div>
+          <h2>Pending list</h2>
+          <p>Everyone who still owes money, largest balance first. A booking
+             leaves this list once verified payments cover what it is due.</p>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-line btn-sm" id="pendingExport">Export CSV</button>
+          <button class="btn btn-line btn-sm" id="pendingReload">Reload</button>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <label class="search">
+          <span data-icon="search"></span>
+          <input type="search" id="pendingSearch" placeholder="Search name, email, phone or ref&hellip;">
+        </label>
+        <select id="pendingStatus" style="max-width:200px">
+          <option value="all">All statuses</option>
+        </select>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Ref</th><th>Customer</th><th>Contact</th><th>Vehicle</th>
+              <th>Dates</th><th>Status</th>
+              <th class="num">Due</th><th class="num">Paid</th>
+              <th class="num">Pending</th>
+            </tr>
+          </thead>
+          <tbody id="pendingRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="panel-photos" role="tabpanel" hidden>
+      <div class="panel-head">
+        <div>
+          <h2>Condition Photos</h2>
+          <p>Everything customers have uploaded: the five vehicle photos at
+             pickup and return, plus any damage they recorded. Click a
+             booking to view all images.</p>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-line btn-sm" id="photosReload">Reload</button>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <label class="search">
+          <span data-icon="search"></span>
+          <input type="search" id="photosSearch" placeholder="Search name, license, vehicle&hellip;">
+        </label>
+        <select id="photosFilter" style="max-width:220px">
+          <option value="all">All bookings</option>
+          <option value="pickup">Has pickup photos</option>
+          <option value="return">Has return photos</option>
+          <option value="both">Has both sets</option>
+          <option value="damage">Has damage photos</option>
+          <option value="signed">Has signed agreement</option>
+        </select>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Ref</th><th>Customer</th><th>Contact</th><th>License</th>
+              <th>Vehicle</th><th>Dates</th><th>Pickup</th><th>Return</th><th>Damage</th><th>Agreement</th>
+              <th>View</th>
+            </tr>
+          </thead>
+          <tbody id="photoRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============================ ACTIONS =========================== -->
+    <section id="panel-actions" role="tabpanel" hidden>
+      <div class="stats" id="actionStats"></div>
+
+      <div class="panel-head">
+        <div>
+          <h2>Actions</h2>
+          <p>All rental and sales bookings that need attention. Confirm, release or cancel reservations from here.</p>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-line btn-sm" id="actReset">Reload</button>
+          <button class="btn btn-red btn-sm" id="actConfirmAll" title="Confirm every Prebooked reservation at once">Confirm all</button>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <label class="search">
+          <span data-icon="search"></span>
+          <input type="search" id="actSearch" placeholder="Search name, ref or vehicle&hellip;">
+        </label>
+        <select id="actFilter" style="max-width:190px">
+          <option value="all">All bookings</option>
+          <option value="prebooked">Prebooked only</option>
+          <option value="confirmed">Confirmed only</option>
+          <option value="completed">Completed</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Ref</th><th>Type</th><th>Customer</th><th>Contact</th><th>License</th>
+              <th>Vehicle</th><th>From</th><th>To</th><th>Advance</th><th>Total</th>
+              <th>Paid</th><th>Pending</th><th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="actRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<!-- editor, reused for both tabs -->
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+  <div class="sheet-inner">
+    <h3 id="sheetTitle">Edit</h3>
+    <p class="sheet-sub" id="sheetSub"></p>
+    <form id="sheetForm" novalidate>
+      <div class="field-grid" id="sheetFields"></div>
+      <p class="form-error" id="sheetError" hidden></p>
+      <div class="sheet-foot">
+        <button class="btn btn-line" type="button" id="sheetCancel">Cancel</button>
+        <button class="btn btn-red" type="submit" id="sheetSubmit">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- photo viewer modal -->
+<div class="photo-modal" id="photoModal" hidden>
+  <div class="pm-backdrop" id="pmBackdrop"></div>
+  <div class="pm-dialog">
+    <div class="pm-head">
+      <div>
+        <h3 id="pmTitle"></h3>
+        <p id="pmSub"></p>
+      </div>
+      <button class="pm-close" id="pmClose" type="button">&times;</button>
+    </div>
+    <div class="pm-tabs">
+      <button class="pm-tab active" data-stage="pickup" type="button">Pickup photos</button>
+      <button class="pm-tab" data-stage="return" type="button">Return photos</button>
+    </div>
+    <div class="pm-grid" id="pmGrid"></div>
+  </div>
+</div>
+
+<!-- full-screen image overlay -->
+<div class="photo-full" id="photoFull" hidden>
+  <button class="pf-close" id="pfClose" type="button">&times;</button>
+  <img id="pfImg" alt="">
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/billing.js"></script>
+<script src="js/store.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/notify.js"></script>
+<script src="js/admin.js?v=20260922e"></script>
+<script>
+  /* Registers the service worker so the site is installable and opens
+     without a connection. Failure is non-fatal: the site works without it.
+
+     The admin panel is staff-only and always online, so it takes the
+     update path eagerly: any worker cached by an older build is asked
+     to update, and admin assets it may still be holding are dropped.
+     Without this an admin keeps the panel they first loaded — the CSS
+     and JS never refresh, and a fixed bug appears unfixed. */
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js')
+        .then(function (reg) { try { reg.update(); } catch (e) {} })
+        .catch(function () {});
+
+      /* Evict any stale admin asset an earlier worker cached. */
+      if (window.caches && caches.keys) {
+        caches.keys().then(function (names) {
+          names.forEach(function (n) {
+            caches.open(n).then(function (c) {
+              c.keys().then(function (reqs) {
+                reqs.forEach(function (r) {
+                  if (/\/(js|css)\/admin\.(js|css)/.test(r.url)) c.delete(r);
+                });
+              });
+            });
+          });
+        }).catch(function () {});
+      }
+    });
+  }
+</script>
+</body>
+</html>

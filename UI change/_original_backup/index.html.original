@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reddy Finances — Car Rental &amp; Sales, Dallas TX</title>
+<meta name="description" content="Premium rental cars and quality used cars with the best prices in Dallas, TX. Rent by the day or buy outright.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,500;1,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- brand band, sitting above the video rather than over it -->
+<div class="brand-bar">
+  <div class="shell">
+    <a href="index.html" aria-label="Reddy Finances — home">
+      <img src="images/brand/logo.png" width="1692" height="930"
+           alt="Reddy Finances" decoding="async">
+    </a>
+  </div>
+</div>
+
+<!-- fullscreen menu is built by js/ui.js -->
+<div class="menu-panel" id="menuPanel"></div>
+
+<main id="top">
+
+  <!-- ============================= HERO ============================
+       Video covers the whole panel. Drop a 16:9 file into
+       images/video/ and add a <source> below; the still at
+       images/hero/hero.jpg is used until then.
+  ================================================================= -->
+  <section class="hero">
+    <!-- menu / wordmark / contact, overlaid on the video — built by js/ui.js -->
+    <header class="site-header"></header>
+
+    <div class="hero-media" id="heroMedia">
+      <!-- Client footage. Swap by replacing images/video/hero.mp4. -->
+      <video playsinline muted loop autoplay preload="auto" poster="images/hero/poster.png">
+        <source src="images/video/hero.mp4" type="video/mp4">
+      </video>
+    </div>
+
+    <div class="hero-grid" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+    <span class="hero-ghost" aria-hidden="true">01</span>
+
+    <div class="hero-decor" aria-hidden="true">
+      <span class="box b1"></span>
+      <span class="box b2"></span>
+      <span class="box b3"></span>
+    </div>
+
+    <div class="hero-slides" role="tablist" aria-label="Hero messages">
+      <button type="button" class="on" aria-label="Message 1"></button>
+      <button type="button" aria-label="Message 2"></button>
+      <button type="button" aria-label="Message 3"></button>
+    </div>
+
+    <div class="hero-body shell">
+
+      <div class="hero-copy">
+        <div class="hero-slide on">
+          <p class="hs-head">What makes<br>me <em>happy</em></p>
+          <p class="hs-sub">Luxury cars for club members</p>
+        </div>
+
+        <div class="hero-slide">
+          <p class="hs-head">Buy back<br><em>program</em></p>
+          <p class="hs-sub">Return your car and buy a brand new one</p>
+        </div>
+
+        <div class="hero-slide split">
+          <p class="hs-head">Drive<br>your<br>dream</p>
+          <p class="hs-head red">Pay<br>now or<br>later</p>
+        </div>
+      </div>
+
+      <div class="hero-actions">
+        <a class="btn btn-red" href="#fleet" data-jump="rental">Browse Rentals</a>
+        <a class="btn btn-ghost-light" href="#fleet" data-jump="sale">Cars For Sale</a>
+      </div>
+    </div>
+
+    <div class="hero-foot">
+      <button class="sq-btn sound-btn" id="soundBtn" type="button" aria-pressed="false" aria-label="Turn sound on"></button>
+      <span class="tag">Follow your dream!</span>
+      <div class="hero-social">
+        <span class="tag">Follow us</span>
+        <a class="sq-btn" href="#contact" aria-label="Instagram" data-icon="ig"></a>
+        <a class="sq-btn" href="#contact" aria-label="Facebook" data-icon="fb"></a>
+      </div>
+    </div>
+
+    <a class="scroll-cue" href="#intro" aria-label="Scroll down"><span data-icon="chevDown"></span><span data-icon="chevDown"></span><span data-icon="chevDown"></span></a>
+  </section>
+
+  <!-- ribbon, directly beneath the video -->
+  <div class="marquee" aria-hidden="true"><div class="marquee-track" id="marquee"></div></div>
+
+  <!-- ============================ INTRO ============================ -->
+  <section class="section" id="intro">
+    <div class="rules top" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="shell">
+      <div class="section-head">
+        <span class="eyebrow">Drive your dream</span>
+        <h2>Tailor-made solutions <em>for every driver</em></h2>
+        <p>Whether you need a car for the weekend or for the next ten years, the
+           same fleet answers both. Every vehicle is inspected, photographed and
+           priced before it reaches this page &mdash; no surprises at the counter.</p>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================ FLEET ============================ -->
+  <section class="section section-grey fleet" id="fleet">
+    <div class="rules top faint" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="shell">
+      <div class="section-head">
+        <span class="eyebrow">The inventory</span>
+        <h2>Rent it <em>or own it</em></h2>
+      </div>
+
+      <div class="fleet-bar">
+        <div class="filters" role="tablist" aria-label="Filter vehicles">
+          <button class="filter-btn" role="tab" data-filter="rental" aria-selected="true">For Rent</button>
+          <button class="filter-btn" role="tab" data-filter="sale"   aria-selected="false">For Sale</button>
+        </div>
+        <span class="eyebrow" id="resultCount" aria-live="polite"></span>
+      </div>
+
+      <div class="grid" id="grid"></div>
+      <div class="fleet-more"><button class="link-rule" id="viewAll"></button></div>
+    </div>
+  </section>
+
+  <!-- ============================ STATS ============================ -->
+  <section class="section section-dark">
+    <div class="shell">
+      <div class="section-head">
+        <span class="eyebrow">Simple process</span>
+        <h2>How it <em>works</em></h2>
+      </div>
+      <div class="stat-grid" id="statGrid"></div>
+    </div>
+  </section>
+
+  <!-- =========================== RESERVE =========================== -->
+  <section class="section section-grey" id="book">
+    <div class="shell">
+      <div class="section-head center">
+        <span class="eyebrow">Book in a minute</span>
+        <h2>Reserve <em>your car</em></h2>
+      </div>
+
+      <div class="reserve-panel">
+        <div class="reserve-tabs" role="tablist" aria-label="What would you like to do">
+          <button class="tab" role="tab" aria-selected="true"  data-mode="rental">Rent a car</button>
+          <button class="tab" role="tab" aria-selected="false" data-mode="sale">Buy a car</button>
+        </div>
+
+        <div class="reserve-fields" id="reserveFields"></div>
+        <button class="btn btn-red btn-block" id="searchBtn">Search Cars</button>
+        <p class="reserve-note" id="reserveNote"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================== CONSULTATION ======================== -->
+  <section class="consult">
+    <div class="shell">
+      <div class="consult-head">
+        <span class="eyebrow">Let's talk</span>
+        <h2>Get a free <em>consultation</em></h2>
+      </div>
+      <form class="consult-form" id="consultForm">
+        <div class="consult-field">
+          <label for="c-name">Name*</label>
+          <input id="c-name" type="text" required autocomplete="name">
+        </div>
+        <div class="consult-field">
+          <label for="c-phone">Phone*</label>
+          <input id="c-phone" type="tel" required autocomplete="tel">
+        </div>
+        <div class="consult-field">
+          <label for="c-mail">Mail*</label>
+          <input id="c-mail" type="email" required autocomplete="email">
+        </div>
+        <button class="consult-send" type="submit">Send <span data-icon="arrow"></span></button>
+      </form>
+      <p class="consult-note" id="consultNote"></p>
+    </div>
+  </section>
+
+</main>
+
+<!-- built by js/ui.js -->
+<footer class="site-footer" id="contact"></footer>
+
+<script src="js/data.js"></script>
+<script src="js/billing.js"></script>
+<script src="js/store.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

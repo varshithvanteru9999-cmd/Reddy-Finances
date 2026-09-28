@@ -1,0 +1,35 @@
+node_modules/
+.env
+*.log
+uploads/contracts/
+uploads/licenses/
+test-contract.js
+test-upload.js
+hostinger.env
+hostinger-min.env
+
+# ---- secrets -------------------------------------------------------
+# Every flavour of .env, not just the plain one: the backups carry the
+# same live database password, mail password and Firebase private key.
+.env
+.env.*
+!.env.example
+*.env
+
+# ---- build artefacts and uploads -----------------------------------
+# Deploy bundles are 30MB each and rebuildable.
+*.zip
+deployment/
+uploads/
+!uploads/.gitkeep
+
+# OCR language data — 15MB, downloaded not authored.
+eng.traineddata
+
+# Database dumps — real customer names, emails, phones, licences.
+live-backup-*.json
+*-backup-*.json
+
+# Working scratch
+conversations/
+.claude/

@@ -1,0 +1,1329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0B0C0E">
+<link rel="apple-touch-icon" href="/images/icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Reddy Finances">
+  <title>My Bookings — Reddy Finances</title>
+  <link rel="stylesheet" href="css/style.css?v=20260922f">
+  <script>
+    // Apply theme early to prevent flash
+    (function() {
+      const savedTheme = localStorage.getItem('theme') || 'light';
+      const root = document.documentElement;
+      if (savedTheme === 'dark') {
+        root.classList.add('dark');
+      } else if (savedTheme === 'light') {
+        root.classList.remove('dark');
+      } else {
+        // system
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          root.classList.add('dark');
+        } else {
+          root.classList.remove('dark');
+        }
+      }
+    })();
+  </script>
+  <style>
+    /* Inline SVGs carry only a viewBox, so without this they stretch to
+       the width of the page. */
+    [data-icon] svg { width: 1em; height: 1em; display: inline-block; vertical-align: middle; }
+    .empty-state [data-icon] { display: block; line-height: 1; }
+    .empty-state [data-icon] svg { width: 48px; height: 48px; margin: 0 auto; }
+    .booking-image [data-icon] svg { width: 40px; height: 40px; }
+    .bookings-container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+    .bookings-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .bookings-header h1 {
+      font-family: var(--display);
+      font-size: clamp(28px, 4vw, 42px);
+      margin: 0;
+    }
+    .booking-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 16px;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 20px;
+      align-items: center;
+    }
+    /* Big enough to carry the status stamp across the middle, the same
+       way the fleet cards on the home page do. */
+    .booking-image {
+      position: relative;
+      width: 200px;
+      aspect-ratio: 16 / 11;
+      height: auto;
+      border-radius: 12px;
+      background: var(--bg-secondary);
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .booking-image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* The stamp: status word over the dates, centred on the photo. */
+    .img-stamp {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      padding: 8px;
+      text-align: center;
+      background: rgba(14, 16, 20, .52);
+      color: #fff;
+    }
+    .img-stamp b {
+      padding: 4px 12px;
+      border-radius: 999px;
+      background: var(--red, #DF0000);
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      line-height: 1.4;
+      white-space: nowrap;
+    }
+    .img-stamp.prebooked b { background: #E2A03F; color: #2b2109; }
+    .img-stamp.under b     { background: #6C5CE7; }
+    .img-stamp.active b    { background: #16a34a; }
+    .img-stamp.past b      { background: rgba(255,255,255,.28); }
+    .img-stamp span {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .02em;
+      text-shadow: 0 1px 3px rgba(0,0,0,.5);
+      line-height: 1.35;
+    }
+    .booking-details h3 {
+      font-weight: 700;
+      color: var(--text-primary);
+      margin: 0 0 4px;
+    }
+    .booking-meta {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+    /* Payment block — same card language as the photo uploader, with a
+       single wide drop target since there is no fixed set of slots. */
+    .payment-block { border-top: 1px solid rgba(0,0,0,.08); }
+    .pay-drop {
+      display: flex; align-items: center; gap: 14px;
+      padding: 14px 16px; margin-top: 4px;
+      border: 1px dashed rgba(0,0,0,.2); border-radius: 12px;
+      cursor: pointer; transition: border-color .18s, background .18s;
+    }
+    .pay-drop:hover { border-color: var(--red,#DF0000); background: rgba(223,0,0,.03); }
+    .pay-drop.busy { opacity: .55; pointer-events: none; }
+    .pay-plus {
+      width: 38px; height: 38px; flex-shrink: 0;
+      display: grid; place-items: center;
+      border-radius: 50%; background: rgba(223,0,0,.08);
+      color: var(--red,#DF0000); font-size: 20px; line-height: 1;
+    }
+    .pay-text b { display: block; font-size: 13px; }
+    .pay-text small { display: block; margin-top: 2px; font-size: 11.5px; color: #6b7280; }
+    .ph-count.pending-flag { background: #fee2e2; color: #991b1b; }
+
+    .booking-status {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .booking-status.active { background: #dcfce7; color: #166534; }
+    .booking-status.completed { background: #e0e7ff; color: #3730a3; }
+    .booking-status.cancelled { background: #fee2e2; color: #991b1b; }
+    .booking-status.pending { background: #fff3cd; color: #854d0e; }
+    .booking-status.prebooked { background: #fff3cd; color: #854d0e; }
+    .booking-status.confirmed { background: #dbeafe; color: #1e40af; }
+    .booking-status.under { background: #ede9fe; color: #4c1d95; }
+    .booking-price {
+      text-align: right;
+      font-family: var(--display);
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .booking-price small {
+      display: block;
+      font-family: var(--font);
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+    .booking-link {
+      font-size: 13px;
+      color: var(--red);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 8px;
+    }
+    .booking-link:hover { text-decoration: underline; }
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-muted);
+    }
+    .empty-state a { color: var(--red); }
+    @media (max-width: 640px) {
+      .booking-card {
+        grid-template-columns: 1fr;
+        text-align: center;
+      }
+      .booking-image { margin: 0 auto; width: 100%; max-width: 320px; }
+      .booking-price { text-align: center; }
+      .booking-details > div { justify-content: center; }
+    }
+
+    /* ---------------- decision banner on the card ---------------- */
+    .decision {
+      grid-column: 1 / -1;
+      margin-top: 14px;
+      padding: 12px 15px;
+      border-radius: 10px;
+      border-left: 4px solid;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .decision b { display: block; font-size: 13.5px; margin-bottom: 3px; }
+    .decision.ok   { background: #e9f7f0; border-color: #0f7a4a; color: #14532d; }
+    .decision.no   { background: #fdf0f0; border-color: #B02020; color: #7f1d1d; }
+    .decision.wait { background: #f3f0ff; border-color: #6C5CE7; color: #3c2f8f; }
+
+    /* -------------------- photo upload boxes --------------------- */
+    .booking-photos {
+      grid-column: 1 / -1;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border-color);
+    }
+    .ph-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    .ph-head h4 {
+      margin: 0 0 4px;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      flex-wrap: wrap;
+    }
+    /* The booking just made, arrived at from the car page. */
+    @keyframes justBookedGlow {
+      0%   { box-shadow: 0 0 0 0 rgba(223, 0, 0, .55); }
+      100% { box-shadow: 0 0 0 14px rgba(223, 0, 0, 0); }
+    }
+    .booking-card.just-booked {
+      border-color: var(--red, #DF0000);
+      animation: justBookedGlow 1.6s ease-out 2;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .booking-card.just-booked { animation: none; }
+    }
+
+    /* ---------------- return notice ---------------- */
+    .notice-block { margin-top: 18px; }
+    .notice-block.given { border-top: 1px solid rgba(15, 122, 74, .35); }
+    .notice-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
+    .notice-date {
+      flex: 0 1 200px;
+      padding: 10px 12px;
+      font-size: 14px;
+    }
+
+    /* ---------------- damage photos ---------------- */
+
+    /* Optional, so it is labelled in grey rather than the red used for
+       the five required shots — a renter who has found no damage
+       should not read this block as something outstanding. */
+    .ph-optional {
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .12);
+      color: var(--text-2, #cfcfcf);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      vertical-align: middle;
+      margin-left: 6px;
+    }
+
+    .damage-block { margin-top: 18px; }
+
+    .dmg-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .dmg-item {
+      position: relative;
+      margin: 0;
+      border: 1px solid rgba(255, 255, 255, .14);
+      border-radius: 12px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, .03);
+    }
+    .dmg-item img {
+      display: block;
+      width: 100%;
+      height: 104px;
+      object-fit: cover;
+    }
+    .dmg-item figcaption {
+      padding: 8px 10px;
+      font-size: 12px;
+      line-height: 1.4;
+      color: var(--text-2, #cfcfcf);
+      word-break: break-word;
+    }
+    .dmg-nonote { opacity: .55; font-style: italic; }
+
+    /* Sits over the image, so removing a mistaken shot does not mean
+       hunting for a control below the fold. */
+    .dmg-del {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      font-size: 17px;
+      line-height: 1;
+      color: #fff;
+      background: rgba(0, 0, 0, .58);
+      border: 0;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+    .dmg-del:hover { background: var(--red, #DF0000); }
+
+    .ph-required {
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: var(--red, #DF0000);
+      color: #fff;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+    .ph-note {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--text-muted, #6a6a70);
+      max-width: 62ch;
+    }
+    .ph-count {
+      flex: 0 0 auto;
+      padding: 5px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border-color);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted, #6a6a70);
+      white-space: nowrap;
+    }
+    .ph-count.done { border-color: #0f7a4a; color: #0f7a4a; background: rgba(15,122,74,.08); }
+
+    /* Capped rather than stretched across the full card width: five
+       square boxes at 1fr each made every slot as tall as it was wide,
+       so the photo steps dominated the booking they belong to. */
+    .ph-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 116px));
+      gap: 8px;
+    }
+    @media (max-width: 640px) {
+      .ph-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    .ph-box {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      /* Wider than tall: a car panel is a landscape subject, and the
+         shorter box keeps five of them on one comfortable row. */
+      aspect-ratio: 4 / 3;
+      padding: 8px;
+      cursor: pointer;
+      overflow: hidden;
+      border: 2px dashed var(--border-color);
+      border-radius: 12px;
+      background: var(--bg-secondary, #f6f6f8);
+      text-align: center;
+      transition: border-color .2s, background .2s, transform .2s;
+    }
+    .ph-box:hover { border-color: var(--red, #DF0000); transform: translateY(-2px); }
+    .ph-box:focus-within { outline: 2px solid var(--red, #DF0000); outline-offset: 2px; }
+
+    .ph-n {
+      position: absolute;
+      top: 6px; left: 8px;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-muted, #9a9aa2);
+    }
+    .ph-plus {
+      font-size: 30px;
+      font-weight: 300;
+      line-height: 1;
+      color: var(--text-muted, #9a9aa2);
+    }
+    .ph-box:hover .ph-plus { color: var(--red, #DF0000); }
+    .ph-label {
+      font-size: 10.5px;
+      font-weight: 600;
+      line-height: 1.25;
+      color: var(--text-primary, #111);
+    }
+
+    /* filled: the photo fills the box, label sits on a dark strip */
+    .ph-box.filled { border-style: solid; border-color: #0f7a4a; padding: 0; }
+    .ph-thumb { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .ph-box.filled .ph-label {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      padding: 5px 4px;
+      background: rgba(12, 14, 18, .72);
+      color: #fff;
+      z-index: 2;
+    }
+    .ph-box.filled .ph-n { z-index: 2; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.6); }
+    .ph-tick {
+      position: absolute;
+      top: 6px; right: 6px;
+      z-index: 2;
+      display: grid;
+      place-items: center;
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      background: #0f7a4a;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .ph-box.busy { opacity: .55; pointer-events: none; }
+
+    /* ---- rental duration tracker ---- */
+    .rental-tracker {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 0;
+      grid-column: 1 / -1;
+    }
+    .rt-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--text-muted, #6a6a70);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .rt-bar {
+      position: relative;
+      flex: 1;
+      height: 6px;
+      border-radius: 3px;
+      background: var(--border-color, #e0e0e0);
+      overflow: hidden;
+    }
+    .rt-fill {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      border-radius: 3px;
+      background: var(--red, #DF0000);
+      transition: width .6s ease;
+    }
+    .rt-days {
+      position: absolute;
+      top: -20px;
+      right: 0;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--red, #DF0000);
+      white-space: nowrap;
+    }
+
+    @media (max-width: 700px) {
+      .ph-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    @media (max-width: 420px) {
+      .ph-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .ph-head { flex-direction: column; }
+    }
+  </style>
+</head>
+<body style="background: var(--bg-primary); min-height: 100vh;">
+  <main class="bookings-container">
+    <div class="bookings-header">
+      <h1>My Bookings</h1>
+      <a href="index.html#fleet" class="btn btn-ghost">Browse Inventory</a>
+    </div>
+    <div id="bookingsList">
+      <div class="empty-state" style="padding: 60px 20px;">
+        <div style="font-size: 48px; margin-bottom: 16px;" data-icon="car"></div>
+        <p style="font-size: 16px; margin-bottom: 16px;">Loading your bookings...</p>
+      </div>
+    </div>
+    <p style="text-align: center; margin-top: 32px; color: var(--text-muted); font-size: 13px;">
+      <a href="profile.html" style="color: var(--red);">← Back to Profile</a>
+    </p>
+  </main>
+
+  <!-- plain scripts, same as every other page: these files export nothing -->
+  <script src="js/data.js"></script>
+  <script src="js/billing.js?v=20260921t"></script>
+  <script src="js/store.js?v=20260921t"></script>
+  <script src="js/ui.js?v=20260922f"></script>
+  <script src="js/auth.js?v=20260923b"></script>
+  <script src="js/notify.js"></script>
+  <script>
+
+    // Initialize icons
+    document.querySelectorAll('[data-icon]').forEach(el => {
+      if (ICON[el.dataset.icon]) el.innerHTML = ICON[el.dataset.icon];
+    });
+
+    // Check auth and load bookings
+    async function init() {
+      /* Who is signed in, decided by the SERVER.
+
+         The session cookie is the only thing that matters here: it is
+         what /api/bookings/mine authenticates against. Asking the
+         server is one fast request, and it cannot be wrong.
+
+         Two earlier attempts got this wrong. Waiting on refreshAuth()
+         alone hung the page whenever the Firebase SDK stalled. Racing
+         it against a 10s timer fixed the hang but introduced a worse
+         fault: on a slow load the TIMER won, returned null, and the
+         page wiped a list it had already shown and demanded sign-in —
+         "it was there, then it vanished".
+
+         So: ask the server first and trust its answer. Only when it
+         says nobody is signed in do we wait on Firebase, and then only
+         to pick up a redirect that has yet to be exchanged for a
+         cookie. A slow SDK can no longer evict a valid session. */
+      let user = null;
+      try {
+        const res = await fetch('/api/auth/me', { cache: 'no-store' });
+        if (res.ok) user = (await res.json()).user || null;
+      } catch { /* offline or server down — fall through */ }
+
+      if (!user) {
+        /* No cookie yet. A redirect sign-in may still be waiting to be
+           collected; give it a bounded moment, but never let it clear
+           a session we already have. */
+        try {
+          user = await Promise.race([
+            refreshAuth().catch(() => null),
+            new Promise(r => setTimeout(() => r(null), 8000))
+          ]);
+        } catch { /* leave them signed out */ }
+      }
+
+      if (!user) {
+        /* Bookings already on screen mean a session that worked a
+           moment ago. init() re-runs after every upload, so a hiccup
+           in the sign-in check must not replace them with a sign-in
+           prompt — that is the "it showed, then it was empty" fault. */
+        const list0 = document.getElementById('bookingsList');
+        if (list0 && list0.querySelector('.booking-card')) return;
+
+        /* Ask them to sign in rather than bouncing to the home page —
+           a silent redirect looks like the link is broken. */
+        document.getElementById('bookingsList').innerHTML = `
+          <div class="empty-state">
+            <p style="font-size:16px;margin-bottom:8px;">Please sign in to see your bookings.</p>
+            <p style="font-size:13px;color:var(--text-muted,#6a6a70);margin-bottom:16px;">
+              Use the same email address you booked with.
+            </p>
+            <a href="index.html" class="btn btn-red" style="display:inline-flex;align-items:center;gap:8px;">Go to the home page</a>
+          </div>`;
+        return;
+      }
+      renderBookings(user.email);
+    }
+
+    /* The API returns one shape (from/to/vehicleName/…); render against
+       that shape rather than a guessed one. Every value that reaches
+       markup is escaped — a name is customer-typed. */
+    /* esc comes from js/auth.js as a global — redeclaring it with const
+       throws "already been declared" and blanks the page. */
+
+    /* money() and nightsBetween() are globals from js/ui.js and
+       js/store.js — reuse them rather than shadowing them. */
+
+    /* "2 Sep" — compact enough to sit on one line inside the stamp. */
+    const shortDate = iso => {
+      const d = new Date(String(iso) + 'T00:00:00');
+      if (isNaN(d)) return String(iso || '');
+      const M = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return d.getDate() + ' ' + M[d.getMonth()];
+    };
+
+    const prettyDate = iso => {
+      const d = new Date(String(iso) + 'T00:00:00');
+      return isNaN(d) ? String(iso || '') : d.toLocaleDateString(undefined,
+        { day: 'numeric', month: 'short', year: 'numeric' });
+    };
+
+    async function renderBookings(email) {
+      const list = document.getElementById('bookingsList');
+      try {
+        const bookings = await loadMyBookings();
+
+        if (!bookings.length) {
+          list.innerHTML = `
+            <div class="empty-state">
+              <div style="font-size: 48px; margin-bottom: 16px;" data-icon="car"></div>
+              <p style="font-size: 16px; margin-bottom: 16px;">No bookings yet.</p>
+              <a href="index.html#fleet" class="btn btn-red" style="display:inline-flex;align-items:center;gap:8px;">Browse Inventory <span data-icon="arrow"></span></a>
+            </div>`;
+          paintIcons();
+          return;
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const past = [], current = [], upcoming = [];
+        for (const b of bookings) {
+          const start = new Date(b.from + 'T00:00:00');
+          const end = new Date(b.to + 'T00:00:00');
+          const status = String(b.status || '').toLowerCase();
+          if (status === 'completed' || status === 'cancelled' || end < today) past.push(b);
+          else if (start > today) upcoming.push(b);
+          else current.push(b);
+        }
+
+        const section = (title, items, note) => items.length ? `
+          <div style="margin-top:32px;margin-bottom:16px;">
+            <h2 style="font-family:var(--display);font-size:24px;margin-bottom:4px;padding-bottom:8px;border-bottom:1px solid var(--border-color);">${esc(title)}</h2>
+            ${note ? `<p style="margin:8px 0 16px;font-size:12.5px;color:var(--text-muted,#6a6a70);">${esc(note)}</p>` : ''}
+            ${items.map(renderCard).join('')}
+          </div>` : '';
+
+        list.innerHTML =
+          section('On rent now', current) +
+          section('Upcoming', upcoming, 'Awaiting confirmation until we contact you.') +
+          section('Past bookings', past);
+
+        paintIcons();
+
+        /* Arriving straight from a booking: put that one in front of
+           them rather than dropping them at the top of a list and
+           leaving them to find it. */
+        const wanted = new URLSearchParams(location.search).get('ref');
+        if (wanted) {
+          const card = list.querySelector(`[data-ref="${CSS.escape(wanted)}"]`);
+          if (card) {
+            card.classList.add('just-booked');
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            /* The mark fades once it has done its job — on a return
+               visit it would just be an unexplained highlight. */
+            setTimeout(() => card.classList.remove('just-booked'), 6000);
+          }
+        }
+      } catch (err) {
+        /* A failure here must not erase bookings already on screen.
+           init() runs again after every photo or payment upload, so a
+           momentary network blip used to replace a good list with an
+           error — the bookings "vanished" for no reason the customer
+           could see. Only an empty page is replaced; otherwise the
+           list stays and the problem is reported over it. */
+        const hasCards = list.querySelector('.booking-card');
+        if (hasCards) {
+          showToast(err.message || 'Could not refresh your bookings.');
+        } else {
+          list.innerHTML = `
+            <div class="empty-state">
+              <p style="color: var(--red);">${esc(err.message || 'Could not load your bookings.')}</p>
+              <p style="font-size:13px;color:var(--text-muted,#6a6a70);margin-top:10px;">
+                Check your connection and reload the page.
+              </p>
+            </div>`;
+        }
+      }
+    }
+
+    function renderCard(b) {
+      const vehicle = [b.vehicleYear, b.vehicleName].filter(Boolean).join(' ') || 'Vehicle';
+      const status = String(b.status || 'Prebooked');
+      const days = nightsBetween(b.from, b.to);
+
+      /* Prebooked + confirmation sent is the "under confirmation" state
+         the office sets — say so on the card, not just in the bell. */
+      const underConfirmation = status === 'Prebooked' && b.confirmationSent;
+      /* "Prebooked" is internal language; to the customer the car is
+         booked. Every other status reads the same on both sides. */
+      const statusLabel = underConfirmation ? 'Under confirmation'
+        : status === 'Prebooked' ? 'Booked'
+        : status;
+      const statusClass = underConfirmation ? 'under' : status.toLowerCase();
+
+      const tolls = Number(b.tolls || 0);
+      const total = Number(b.total || 0);
+
+      const isConfirmed = status === 'Confirmed' || status === 'Active';
+
+      /* Two stages.
+
+         From the moment a booking is made the customer can PAY — that
+         is what moves it forward, so it must not wait on the office.
+
+         The condition photos, damage shots and return set only open
+         once the office has accepted: they record the state of a car
+         at handover, and until the booking is approved there is no
+         handover to record. */
+      const isOpen = isConfirmed || status === 'Prebooked';
+      const canPay = isOpen;
+      const canPhoto = isConfirmed;
+
+      const paymentSection = canPay ? paymentUploader(b) : '';
+      const photoSection = canPhoto ? photoUploader(b, 'pickup') : '';
+      const damageSection = canPhoto ? damageUploader(b) : '';
+
+      /* Return condition photos — always visible for confirmed/active. */
+      const _today = new Date(); _today.setHours(0, 0, 0, 0);
+      const _started = new Date(b.from + 'T00:00:00') <= _today;
+      const _ended = new Date(b.to + 'T00:00:00') < _today;
+      const returnOn = new Date((b.expectedReturnOn || b.to) + 'T00:00:00');
+      returnOn.setHours(0, 0, 0, 0);
+      const daysToReturn = Math.round((returnOn - _today) / 86400000);
+      const onRentNow = _started && !_ended;
+      /* Notice comes before the return photos: it is the step that
+         starts the handover, and the photos follow once a date is set. */
+      const noticeSection = canPhoto ? returnNoticeBlock(b) : '';
+      const returnSection = canPhoto
+        ? returnPhotoUploader(b, {
+            daysToReturn,
+            notice: Boolean(b.returnNoticeGivenAt),
+            returnOn
+          })
+        : '';
+
+      /* Rental duration tracker — compact bar between pickup/return photos */
+      const rentalTracker = canPhoto ? (() => {
+        const start = new Date(b.from + 'T00:00:00');
+        const end = returnOn;
+        const totalDays = Math.max(1, Math.round((end - start) / 86400000));
+        const elapsed = Math.max(0, Math.round((_today - start) / 86400000));
+        const pct = Math.min(100, Math.round((elapsed / totalDays) * 100));
+        return `
+        <div class="rental-tracker">
+          <span class="rt-label rt-left">PICKUP</span>
+          <div class="rt-bar">
+            <div class="rt-fill" style="width:${pct}%"></div>
+            <span class="rt-days">${Math.min(elapsed, totalDays)} of ${totalDays} days</span>
+          </div>
+          <span class="rt-label rt-right">RETURN</span>
+        </div>`;
+      })() : '';
+
+      /* The admin's decision, stated plainly on the card — approved,
+         rejected, or still waiting. */
+      const decision =
+        status === 'Cancelled' ? {
+          cls: 'no',
+          title: 'Slot rejected',
+          text: 'This car is unavailable for the dates you asked for. '
+              + 'Nothing has been charged — please choose another car or different dates.'
+        }
+        : isConfirmed ? {
+          cls: 'ok',
+          title: 'Slot booked — approved',
+          text: 'Your booking is confirmed. Upload the five vehicle photos below '
+              + 'before you collect the car.'
+        }
+        : underConfirmation ? {
+          cls: 'wait',
+          title: 'Under confirmation',
+          text: 'Our team is reviewing your request. We will let you know shortly.'
+        }
+        : {
+          /* Booked, but not yet accepted by the office. The one useful
+             thing they can do now is pay — the photo steps open once
+             the booking is confirmed. */
+          cls: 'wait',
+          title: 'Booked — awaiting confirmation',
+          text: 'Your car is reserved. Upload your payment screenshot below '
+              + 'so we can confirm it. The vehicle photo steps open once '
+              + 'your booking is accepted.'
+        };
+
+      const decisionBlock = status === 'Completed' ? '' : `
+        <div class="decision ${decision.cls}">
+          <b>${esc(decision.title)}</b>${esc(decision.text)}
+        </div>`;
+
+      /* The stamp across the photo: what state this booking is in, and
+         the dates it covers — the same language the fleet cards use. */
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const started = new Date(b.from + 'T00:00:00') <= today;
+      const ended = new Date(b.to + 'T00:00:00') < today;
+
+      const stamp =
+        status === 'Cancelled' ? ['past', 'Cancelled']
+        : status === 'Completed' || ended ? ['past', 'Completed']
+        : status === 'Active' || started ? ['active', 'On rent']
+        : underConfirmation ? ['under', 'Under confirmation']
+        /* "Prebooked" is the office's word for a request awaiting a
+           decision. The customer's car is simply booked, so the stamp
+           says that whether or not the office has touched it yet. */
+        : ['', 'Booked'];
+
+      return `
+      <article class="booking-card" data-ref="${esc(b.id)}">
+        <div class="booking-image">
+          ${b.vehicleImage
+            ? `<img src="${esc(b.vehicleImage)}" alt="${esc(vehicle)}">`
+            : `<span style="font-size:32px;" data-icon="car"></span>`}
+          <span class="img-stamp ${esc(stamp[0])}">
+            <b>${esc(stamp[1])}</b>
+            <span>${esc(shortDate(b.from))} &ndash; ${esc(shortDate(b.to))}</span>
+          </span>
+        </div>
+
+        <div class="booking-details">
+          <h3>${esc(vehicle)}</h3>
+          <div class="booking-meta">
+            ${esc(prettyDate(b.from))} &mdash; ${esc(prettyDate(b.to))}
+            <br>Reference ${esc(b.id)} &middot; ${days} day${days === 1 ? '' : 's'}
+          </div>
+          ${b.contractSignedAt ? `
+            <div style="margin-top:8px;">
+              <span class="booking-status confirmed">Contract signed</span>
+            </div>` : ''}
+          ${underConfirmation ? `
+            <p style="margin:10px 0 0;font-size:12px;line-height:1.5;color:var(--text-muted,#6a6a70);">
+              We are reviewing this request and will confirm shortly.
+            </p>` : ''}
+        </div>
+
+        <div class="booking-price">
+          ${esc(money(total + tolls))}
+          <small>${tolls > 0
+            ? `${esc(money(total))} rental + ${esc(money(tolls))} tolls`
+            : 'Total'}</small>
+          <a href="car.html?id=${encodeURIComponent(b.carId || '')}" class="booking-link">View Details <span data-icon="arrow"></span></a>
+        </div>
+
+        ${decisionBlock}
+        ${/* Payment comes first: it is the one thing a customer can do
+             the moment they book, and the step that gets their booking
+             approved. The condition photos below only open up once the
+             office has accepted. */''}
+        ${paymentSection}
+        ${photoSection}
+        ${damageSection}
+        ${rentalTracker}
+        ${noticeSection}
+        ${returnSection}
+      </article>`;
+    }
+
+    /* Condition photos, required once a booking is confirmed. */
+    /* Five condition photos, in the order the client asked for them.
+       Each is a square box with a + until it is filled, then a thumbnail
+       with a tick. Uploading is mandatory before collection. */
+    const PHOTO_SLOTS = [
+      ["odometer",   "Odometer"],
+      ["front",      "Front"],
+      ["rear",       "Rear"],
+      ["left_side",  "Left side"],
+      ["right_side", "Right side"]
+    ];
+
+    /* Proof of payment. Only once the office has approved the rental —
+       before that there is nothing to pay. Several uploads are expected
+       over a long rental, one per month, so this never "completes". */
+    function paymentUploader(b) {
+      const pending = Number(b.pending || 0);
+
+      return `
+        <div class="booking-photos payment-block">
+          <div class="ph-head">
+            <div>
+              <h4>Payment</h4>
+              <p class="ph-note">${pending > 0
+                ? `<b>${esc(money(pending))} outstanding.</b> Upload a screenshot of your transfer and the office will confirm it.`
+                : "Paid by transfer? Upload a screenshot here so the office can match it to your booking."}</p>
+            </div>
+            ${pending > 0
+              ? `<span class="ph-count pending-flag">${esc(money(pending))} due</span>`
+              : ""}
+          </div>
+
+          <label class="pay-drop">
+            <span class="pay-plus" aria-hidden="true">+</span>
+            <span class="pay-text">
+              <b>Add payment screenshot</b>
+              <small>JPG or PNG &middot; your bank or UPI confirmation</small>
+            </span>
+            <input type="file" accept="image/*" hidden
+                   onchange="uploadPayment('${esc(b.id)}', this)">
+          </label>
+
+          <div class="pay-list" id="pay-${esc(b.id)}"></div>
+        </div>`;
+    }
+
+    /* Damage photos — optional, and as many as the renter needs.
+
+       The agreement tells them to record any damage already on the car
+       before driving away, but until now the app gave them nowhere to
+       put it, so that evidence lived in a chat thread or nowhere. Each
+       shot takes an optional note ("scratch on rear bumper") because a
+       close-up of a panel means little on its own. */
+    function damageUploader(b) {
+      const shots = b.damagePhotos || [];
+
+      return `
+        <div class="booking-photos damage-block">
+          <div class="ph-head">
+            <div>
+              <h4>Damage photos <span class="ph-optional">Optional</span></h4>
+              <p class="ph-note">Found a scratch, dent or mark? Photograph it before
+                 you drive away. These are your record that it was already there,
+                 so you are not charged for it later.</p>
+            </div>
+            <span class="ph-count${shots.length ? ' done' : ''}">${shots.length}</span>
+          </div>
+
+          ${shots.length ? `
+          <div class="dmg-list">
+            ${shots.map(d => `
+              <figure class="dmg-item">
+                <img src="${esc(d.src)}" alt="${esc(d.note || 'Damage photo')}" loading="lazy">
+                <figcaption>${d.note ? esc(d.note) : '<span class="dmg-nonote">No note</span>'}</figcaption>
+                <button type="button" class="dmg-del" title="Remove this photo"
+                        onclick="deleteDamagePhoto('${esc(b.id)}', ${Number(d.id)})">&times;</button>
+              </figure>`).join('')}
+          </div>` : ''}
+
+          <label class="pay-drop dmg-drop">
+            <span class="pay-plus" aria-hidden="true">+</span>
+            <span class="pay-text">
+              <b>Add damage photo</b>
+              <small>JPG or PNG &middot; you will be asked what it shows</small>
+            </span>
+            <input type="file" accept="image/*" hidden
+                   onchange="uploadDamagePhoto('${esc(b.id)}', this)">
+          </label>
+        </div>`;
+    }
+
+    function photoUploader(b, stage) {
+      const photos = stage === 'return' ? (b.returnPhotos || {}) : (b.photos || {});
+      const done = PHOTO_SLOTS.filter(([id]) => photos[id]).length;
+      const all = done === PHOTO_SLOTS.length;
+
+      return `
+        <div class="booking-photos">
+          <div class="ph-head">
+            <div>
+              <h4>Vehicle photos <span class="ph-required">Required</span></h4>
+              <p class="ph-note">${all
+                ? "All five photos received — thank you."
+                : "Upload all five before you collect the car. They record its condition at handover, so you are not charged for damage that was already there."}</p>
+            </div>
+            <span class="ph-count ${all ? "done" : ""}">${done} of ${PHOTO_SLOTS.length}</span>
+          </div>
+
+          <div class="ph-grid">
+            ${PHOTO_SLOTS.map(([id, label], i) => {
+              const src = photos[id];
+              return `
+              <label class="ph-box${src ? " filled" : ""}"
+                     title="${src ? "Uploaded — click to replace" : "Upload the " + esc(label.toLowerCase()) + " photo"}">
+                <span class="ph-n">${i + 1}</span>
+                ${src
+                  ? `<img class="ph-thumb" src="${esc(src)}" alt="${esc(label)}"><span class="ph-tick" aria-hidden="true">&#10003;</span>`
+                  : `<span class="ph-plus" aria-hidden="true">+</span>`}
+                <span class="ph-label">${esc(label)}</span>
+                <input type="file" accept="image/*" hidden
+                       onchange="uploadBookingPhoto('${esc(b.id)}','${esc(id)}','${stage}',this)">
+              </label>`;
+            }).join("")}
+          </div>
+        </div>`;
+    }
+
+    /* Return handback condition photos. Shown in the last 5 days before
+       the car comes back so the same five shots can be compared against
+       the ones taken at pickup. */
+    /* Return notice — the agreement asks for two weeks' warning and the
+       server enforces a 10-day minimum, but until now only the office
+       could file it. A renter had to phone in and hope it was recorded,
+       with nothing on their own page to show it had been. */
+    function returnNoticeBlock(b) {
+      const given = Boolean(b.returnNoticeGivenAt);
+      const expected = b.expectedReturnOn || b.to;
+
+      if (given) {
+        return `
+          <div class="booking-photos notice-block given">
+            <div class="ph-head">
+              <div>
+                <h4>Return notice <span class="ph-optional">Given</span></h4>
+                <p class="ph-note">You have told us the car comes back on
+                   <b>${esc(prettyDate(expected))}</b>. We will be in touch to
+                   arrange the handover.</p>
+              </div>
+              <span class="ph-count done">&#10003;</span>
+            </div>
+          </div>`;
+      }
+
+      /* Ten days from today is the earliest date the server accepts, so
+         the picker refuses an impossible one rather than letting them
+         submit and be rejected. */
+      const soonest = new Date();
+      soonest.setDate(soonest.getDate() + 10);
+      const minDate = soonest.toISOString().slice(0, 10);
+
+      return `
+        <div class="booking-photos notice-block">
+          <div class="ph-head">
+            <div>
+              <h4>Returning the car? <span class="ph-optional">10 days notice</span></h4>
+              <p class="ph-note">Tell us when you plan to bring it back. We need
+                 at least <b>10 days</b> notice so the handover can be arranged
+                 and the next booking planned.</p>
+            </div>
+          </div>
+          <div class="notice-row">
+            <input type="date" class="text-input notice-date"
+                   id="rn-${esc(b.id)}" min="${esc(minDate)}"
+                   value="${esc(expected && expected >= minDate ? expected : minDate)}"
+                   aria-label="Planned return date">
+            <button type="button" class="btn btn-red btn-sm"
+                    onclick="giveReturnNotice('${esc(b.id)}')">Give notice</button>
+          </div>
+        </div>`;
+    }
+
+    function returnPhotoUploader(b, { daysToReturn, notice, returnOn }) {
+      const photos = b.returnPhotos || {};
+      const done = PHOTO_SLOTS.filter(([id]) => photos[id]).length;
+      const all = done === PHOTO_SLOTS.length;
+      const when = prettyDate(returnOn.toISOString().slice(0, 10));
+
+      return `
+        <div class="booking-photos" style="border-top:1px solid var(--red,#DF0000);">
+          <div class="ph-head">
+            <div>
+              <h4>Return photos <span class="ph-required">Required</span></h4>
+              <p class="ph-note">${all
+                ? "All five return photos received — thank you."
+                : "The car is due back " + (when ? "on " + esc(when) : "shortly") + ". "
+                  + (notice ? "Upload the same five photos before you bring it back. " : "")
+                  + "They record its condition at handback, so you are not charged for damage that wasn't there when you collected it."}</p>
+            </div>
+            <span class="ph-count ${all ? "done" : ""}">${done} of ${PHOTO_SLOTS.length}</span>
+          </div>
+
+          <div class="ph-grid">
+            ${PHOTO_SLOTS.map(([id, label], i) => {
+              const src = photos[id];
+              return `
+              <label class="ph-box${src ? " filled" : ""}"
+                     title="${src ? "Uploaded — click to replace" : "Upload the " + esc(label.toLowerCase()) + " photo"}">
+                <span class="ph-n">${i + 1}</span>
+                ${src
+                  ? `<img class="ph-thumb" src="${esc(src)}" alt="${esc(label)}"><span class="ph-tick" aria-hidden="true">&#10003;</span>`
+                  : `<span class="ph-plus" aria-hidden="true">+</span>`}
+                <span class="ph-label">${esc(label)}</span>
+                <input type="file" accept="image/*" hidden
+                       onchange="uploadBookingPhoto('${esc(b.id)}','${esc(id)}','return',this)">
+              </label>`;
+            }).join("")}
+          </div>
+        </div>`;
+    }
+
+    function paintIcons() {
+      document.querySelectorAll('[data-icon]').forEach(el => {
+        if (ICON[el.dataset.icon]) el.innerHTML = ICON[el.dataset.icon];
+      });
+    }
+
+    function nightsBetween(from, to) {
+      const a = new Date(from + 'T00:00:00');
+      const b = new Date(to + 'T00:00:00');
+      if (isNaN(a) || isNaN(b)) return 0;
+      return Math.max(1, Math.round((b - a) / 86400000));
+    }
+
+    window.giveReturnNotice = async function(bookingRef) {
+      const input = document.getElementById('rn-' + bookingRef);
+      const when = input && input.value;
+      if (!when) { showToast('Pick the date you plan to return the car.'); return; }
+
+      const btn = input.parentElement.querySelector('button');
+      const was = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Sending…';
+      try {
+        const res = await fetch(`/api/bookings/${bookingRef}/return-notice`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ expectedReturnOn: when })
+        });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(out.error || 'Could not record your notice');
+        showToast('Return notice received — thank you.');
+        init();
+      } catch (err) {
+        /* The server enforces the 10-day minimum and says so plainly,
+           so its message is shown rather than a generic failure. */
+        showToast(err.message || 'Could not record your notice');
+        btn.disabled = false;
+        btn.textContent = was;
+      }
+    };
+
+    window.uploadDamagePhoto = async function(bookingRef, input) {
+      if (!input.files || !input.files[0]) return;
+      const file = input.files[0];
+
+      /* Asked before the upload starts: a photo of a panel means little
+         without a word about what it shows, and afterwards the renter
+         has already moved on. Cancelling the prompt still uploads —
+         the picture matters more than the caption. */
+      const note = window.prompt(
+        'What does this photo show? (optional)\n\ne.g. scratch on rear bumper'
+      ) || '';
+
+      const label = input.closest('label');
+      label.classList.add('busy');
+
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const base64 = e.target.result.split(',')[1];
+        try {
+          const res = await fetch(`/api/bookings/${bookingRef}/damage-photos`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              stage: 'pickup',
+              note: note.trim().slice(0, 300),
+              file: { data: base64, name: file.name, type: file.type, size: file.size }
+            })
+          });
+          if (res.ok) {
+            showToast('Damage photo saved');
+            init();
+          } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Failed to upload photo');
+            label.classList.remove('busy');
+            paintIcons();
+          }
+        } catch (err) {
+          showToast('Failed to upload photo');
+          label.classList.remove('busy');
+          paintIcons();
+        }
+      };
+      reader.readAsDataURL(file);
+    };
+
+    window.deleteDamagePhoto = async function(bookingRef, id) {
+      if (!window.confirm('Remove this damage photo?')) return;
+      try {
+        const res = await fetch(
+          `/api/bookings/${bookingRef}/damage-photos/${id}`, { method: 'DELETE' });
+        if (res.ok) { showToast('Photo removed'); init(); }
+        else {
+          const err = await res.json().catch(() => ({}));
+          showToast(err.error || 'Could not remove the photo');
+        }
+      } catch { showToast('Could not remove the photo'); }
+    };
+
+    window.uploadBookingPhoto = async function(bookingRef, photoType, stage, input) {
+      if (!input.files || !input.files[0]) return;
+      const file = input.files[0];
+      
+      /* Dim the box while it uploads. Replacing its innerHTML would
+         destroy the file input this handler was called from. */
+      const label = input.closest('label');
+      label.classList.add('busy');
+
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const base64 = e.target.result.split(',')[1];
+        try {
+          const res = await fetch(`/api/bookings/${bookingRef}/photos`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: photoType,
+              stage: stage === 'return' ? 'return' : 'pickup',
+              file: {
+                data: base64,
+                name: file.name,
+                type: file.type,
+                size: file.size
+              }
+            })
+          });
+          if (res.ok) {
+            showToast('Photo uploaded successfully');
+            init(); // reload to refresh UI
+          } else {
+            const err = await res.json();
+            showToast(err.error || 'Failed to upload photo');
+            label.classList.remove('busy');
+            paintIcons();
+          }
+        } catch (err) {
+          showToast('Failed to upload photo');
+          label.classList.remove('busy');
+          paintIcons();
+        }
+      };
+      reader.readAsDataURL(file);
+    };
+
+    /* Proof of payment. Same shape as the condition-photo upload, but
+       the office is asked for an amount so it can be matched against
+       what is owed. */
+    window.uploadPayment = async function(bookingRef, input) {
+      if (!input.files || !input.files[0]) return;
+      const file = input.files[0];
+
+      const entered = prompt(
+        'How much does this payment cover? (in USD)'
+      );
+      /* Cancel means cancel — an empty string is "prefer not to say". */
+      if (entered === null) { input.value = ''; return; }
+      const amount = entered.trim() === '' ? null : Number(entered.replace(/[^0-9.]/g, ''));
+      if (amount !== null && (!isFinite(amount) || amount < 0)) {
+        showToast('That amount does not look right.');
+        input.value = '';
+        return;
+      }
+
+      const drop = input.closest('label');
+      drop.classList.add('busy');
+
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const res = await fetch(`/api/bookings/${bookingRef}/payment-proof`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              amount,
+              file: {
+                data: e.target.result.split(',')[1],
+                name: file.name,
+                type: file.type,
+                size: file.size
+              }
+            })
+          });
+          if (res.ok) {
+            showToast('Payment proof sent — the office will confirm it.');
+            init();
+          } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Could not upload that image.');
+            drop.classList.remove('busy');
+          }
+        } catch {
+          showToast('Could not upload that image.');
+          drop.classList.remove('busy');
+        }
+        input.value = '';
+      };
+      reader.readAsDataURL(file);
+    };
+
+    init();
+  </script>
+<script>
+  /* Registers the service worker so the site is installable and opens
+     without a connection. Failure is non-fatal: the site works without it. */
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js')
+        .then(function (reg) { try { reg.update(); } catch (e) {} })
+        .catch(function () {});
+
+      /* This page shows one customer's own data and used to be part of
+         the offline shell, so an older worker may still be holding a
+         copy. A stale one renders whatever was cached — often nothing —
+         however many times the page is reloaded, so it is evicted here
+         rather than left for the viewer to clear by hand. */
+      if (window.caches && caches.keys) {
+        caches.keys().then(function (names) {
+          names.forEach(function (n) {
+            caches.open(n).then(function (c) {
+              c.keys().then(function (reqs) {
+                reqs.forEach(function (r) {
+                  if (/\/(bookings|profile)\.html/.test(r.url)) c.delete(r);
+                });
+              });
+            });
+          });
+        }).catch(function () {});
+      }
+    });
+  }
+</script>
+</body>
+</html>

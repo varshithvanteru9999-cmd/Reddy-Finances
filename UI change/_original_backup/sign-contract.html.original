@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign Contract - Reddy Finances</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    .contract-container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+    .contract-header {
+      text-align: center;
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid #c0392b;
+    }
+    .contract-header h1 {
+      color: #1a1a2e;
+      margin-bottom: 10px;
+    }
+    .contract-header .ref {
+      color: #666;
+      font-size: 14px;
+    }
+    .contract-info {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 30px;
+    }
+    .contract-info h3 {
+      color: #1a1a2e;
+      margin-bottom: 15px;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 10px;
+    }
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+    }
+    .info-item {
+      display: flex;
+      flex-direction: column;
+    }
+    .info-item label {
+      font-size: 12px;
+      color: #666;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .info-item span {
+      font-weight: 500;
+      color: #333;
+    }
+    .upload-section {
+      background: white;
+      border: 2px dashed #ddd;
+      border-radius: 8px;
+      padding: 30px;
+      margin-bottom: 20px;
+      transition: border-color 0.3s;
+    }
+    .upload-section.drag-over {
+      border-color: #c0392b;
+      background: #fdf2f2;
+    }
+    .upload-section h3 {
+      color: #1a1a2e;
+      margin-bottom: 10px;
+    }
+    .upload-section p {
+      color: #666;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+    .file-input-wrapper {
+      position: relative;
+      display: inline-block;
+      width: 100%;
+    }
+    .file-input-wrapper input[type="file"] {
+      position: absolute;
+      opacity: 0;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+    .file-input-label {
+      display: block;
+      padding: 15px 20px;
+      background: #f8f9fa;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.3s;
+      text-align: center;
+    }
+    .file-input-label:hover {
+      background: #eef;
+      border-color: #c0392b;
+    }
+    .file-input-label.has-file {
+      background: #e8f5e9;
+      border-color: #27ae60;
+      color: #27ae60;
+    }
+    .file-name {
+      margin-top: 10px;
+      font-size: 13px;
+      color: #333;
+    }
+    .required-badge {
+      color: #c0392b;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .btn-group {
+      display: flex;
+      gap: 15px;
+      justify-content: center;
+      margin-top: 30px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      padding: 12px 30px;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      border: none;
+      font-size: 16px;
+    }
+    .btn-primary {
+      background: #c0392b;
+      color: white;
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: #a93226;
+    }
+    .btn-primary:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .btn-secondary {
+      background: #f8f9fa;
+      color: #333;
+      border: 1px solid #ddd;
+    }
+    .btn-secondary:hover {
+      background: #eef;
+    }
+    .status-message {
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      display: none;
+    }
+    .status-message.success {
+      display: block;
+      background: #e8f5e9;
+      border: 1px solid #27ae60;
+      color: #27ae60;
+    }
+    .status-message.error {
+      display: block;
+      background: #fdf2f2;
+      border: 1px solid #c0392b;
+      color: #c0392b;
+    }
+    .status-message.info {
+      display: block;
+      background: #eef;
+      border: 1px solid #3498db;
+      color: #3498db;
+    }
+    .checkbox-group {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin: 20px 0;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 6px;
+    }
+    .checkbox-group input {
+      margin-top: 3px;
+    }
+    .checkbox-group label {
+      font-size: 14px;
+      color: #333;
+      line-height: 1.5;
+    }
+    .checkbox-group a {
+      color: #c0392b;
+      text-decoration: underline;
+    }
+    .progress-steps {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 30px;
+      position: relative;
+    }
+    .progress-steps::before {
+      content: '';
+      position: absolute;
+      top: 15px;
+      left: 10%;
+      right: 10%;
+      height: 2px;
+      background: #ddd;
+      z-index: 1;
+    }
+    .step {
+      position: relative;
+      z-index: 2;
+      text-align: center;
+      flex: 1;
+    }
+    .step-circle {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: #ddd;
+      border: 2px solid #ddd;
+      margin: 0 auto 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #999;
+      font-weight: 600;
+      transition: all 0.3s;
+    }
+    .step.active .step-circle {
+      background: #c0392b;
+      border-color: #c0392b;
+      color: white;
+    }
+    .step.completed .step-circle {
+      background: #27ae60;
+      border-color: #27ae60;
+      color: white;
+    }
+    .step-label {
+      font-size: 13px;
+      color: #666;
+    }
+    .step.active .step-label {
+      color: #c0392b;
+      font-weight: 600;
+    }
+    .step.completed .step-label {
+      color: #27ae60;
+    }
+    .pdf-preview {
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+    .pdf-preview iframe {
+      width: 100%;
+      height: 500px;
+      border: none;
+    }
+    @media (max-width: 600px) {
+      .contract-container {
+        padding: 20px 15px;
+      }
+      .progress-steps::before {
+        left: 5%;
+        right: 5%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <a href="index.html" class="logo" aria-label="Reddy Finances home">
+        <svg viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">
+          <rect x="2" y="8" width="28" height="18" rx="3" fill="#1a1a2e"/>
+          <path d="M6 16h20M6 20h14" stroke="#c0392b" stroke-width="2.5" stroke-linecap="round"/>
+          <circle cx="26" cy="16" r="3" fill="#c0392b"/>
+        </svg>
+        <span>Reddy Finances</span>
+      </a>
+    </div>
+  </header>
+
+  <main class="contract-container">
+    <div class="progress-steps">
+      <div class="step completed" data-step="1">
+        <div class="step-circle">✓</div>
+        <div class="step-label">Review Agreement</div>
+      </div>
+      <div class="step active" data-step="2">
+        <div class="step-circle">2</div>
+        <div class="step-label">Sign & Upload</div>
+      </div>
+      <div class="step" data-step="3">
+        <div class="step-circle">3</div>
+        <div class="step-label">Complete</div>
+      </div>
+    </div>
+
+    <div class="contract-header">
+      <h1>Rental Agreement</h1>
+      <div class="ref">Reference: <strong id="bookingRef">—</strong></div>
+    </div>
+
+    <div id="statusMessage" class="status-message"></div>
+
+    <div class="contract-info">
+      <h3>Booking Details</h3>
+      <div class="info-grid">
+        <div class="info-item">
+          <label>Vehicle</label>
+          <span id="vehicleInfo">—</span>
+        </div>
+        <div class="info-item">
+          <label>Rental Period</label>
+          <span id="rentalPeriod">—</span>
+        </div>
+        <div class="info-item">
+          <label>Monthly Rate</label>
+          <span id="monthlyRate">—</span>
+        </div>
+        <div class="info-item">
+          <label>Customer</label>
+          <span id="customerName">—</span>
+        </div>
+        <div class="info-item">
+          <label>Email</label>
+          <span id="customerEmail">—</span>
+        </div>
+        <div class="info-item">
+          <label>Phone</label>
+          <span id="customerPhone">—</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="pdf-preview">
+      <iframe id="pdfPreview" src="" title="Rental Agreement Preview"></iframe>
+    </div>
+
+    <div class="upload-section" id="contractUpload">
+      <h3>📄 Signed Rental Agreement <span class="required-badge">(Required)</span></h3>
+      <p>Please sign the agreement (you can print, sign, and scan OR use any e-signature tool) and upload the signed PDF.</p>
+      <div class="file-input-wrapper">
+        <input type="file" id="contractFile" accept=".pdf" required>
+        <span class="file-input-label" id="contractLabel">Click to choose or drag & drop signed contract (PDF)</span>
+      </div>
+      <div class="file-name" id="contractFileName"></div>
+    </div>
+
+    <div class="upload-section" id="licenseUpload">
+      <h3>🪪 Driver's License <span class="required-badge">(Required)</span></h3>
+      <p>Upload a clear photo or scan of your driver's license (PDF, JPG, PNG).</p>
+      <div class="file-input-wrapper">
+        <input type="file" id="licenseFile" accept=".pdf,.jpg,.jpeg,.png" required>
+        <span class="file-input-label" id="licenseLabel">Click to choose or drag & drop license</span>
+      </div>
+      <div class="file-name" id="licenseFileName"></div>
+    </div>
+
+    <div class="checkbox-group">
+      <input type="checkbox" id="termsAccept" required>
+      <label for="termsAccept">
+        I confirm that I have read and agree to all terms in the rental agreement,
+        and that the information provided is accurate. 
+        <a href="#" onclick="viewFullTerms()">View full terms</a>
+      </label>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn btn-primary" id="submitBtn" disabled>
+        <span id="submitText">Submit Documents</span>
+      </button>
+      <button class="btn btn-secondary" id="cancelBtn">Cancel</button>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <p>&copy; 2025 Reddy Finances. All rights reserved.</p>
+  </footer>
+
+  <script>
+    // Get booking reference from URL
+    const params = new URLSearchParams(window.location.search);
+    const bookingRef = params.get('ref');
+    
+    if (!bookingRef) {
+      document.getElementById('statusMessage').className = 'status-message error';
+      document.getElementById('statusMessage').textContent = 'Invalid link: No booking reference provided.';
+      document.getElementById('submitBtn').style.display = 'none';
+    } else {
+      document.getElementById('bookingRef').textContent = bookingRef;
+      loadBookingDetails(bookingRef);
+    }
+
+    // DOM elements
+    const contractFile = document.getElementById('contractFile');
+    const licenseFile = document.getElementById('licenseFile');
+    const contractLabel = document.getElementById('contractLabel');
+    const licenseLabel = document.getElementById('licenseLabel');
+    const contractFileName = document.getElementById('contractFileName');
+    const licenseFileName = document.getElementById('licenseFileName');
+    const termsAccept = document.getElementById('termsAccept');
+    const submitBtn = document.getElementById('submitBtn');
+    const submitText = document.getElementById('submitText');
+    const statusMessage = document.getElementById('statusMessage');
+    const cancelBtn = document.getElementById('cancelBtn');
+
+    // File upload handling
+    function setupFileInput(fileInput, labelEl, fileNameEl) {
+      fileInput.addEventListener('change', () => {
+        if (fileInput.files.length) {
+          const file = fileInput.files[0];
+          labelEl.classList.add('has-file');
+          labelEl.textContent = '✓ File selected';
+          fileNameEl.textContent = `${file.name} (${formatFileSize(file.size)})`;
+          checkFormValidity();
+        } else {
+          labelEl.classList.remove('has-file');
+          labelEl.textContent = labelEl.dataset.originalText || 'Click to choose or drag & drop';
+          fileNameEl.textContent = '';
+          checkFormValidity();
+        }
+      });
+
+      // Drag and drop
+      const section = fileInput.closest('.upload-section');
+      section.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        section.classList.add('drag-over');
+      });
+      section.addEventListener('dragleave', () => section.classList.remove('drag-over'));
+      section.addEventListener('drop', (e) => {
+        e.preventDefault();
+        section.classList.remove('drag-over');
+        if (e.dataTransfer.files.length) {
+          fileInput.files = e.dataTransfer.files;
+          fileInput.dispatchEvent(new Event('change'));
+        }
+      });
+      section.addEventListener('click', () => fileInput.click());
+      
+      labelEl.dataset.originalText = labelEl.textContent;
+    }
+
+    setupFileInput(contractFile, contractLabel, contractFileName);
+    setupFileInput(licenseFile, licenseLabel, licenseFileName);
+
+    termsAccept.addEventListener('change', checkFormValidity);
+
+    function checkFormValidity() {
+      const hasContract = contractFile.files.length > 0;
+      const hasLicense = licenseFile.files.length > 0;
+      const accepted = termsAccept.checked;
+      submitBtn.disabled = !(hasContract && hasLicense && accepted);
+    }
+
+    function formatFileSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    async function loadBookingDetails(ref) {
+      try {
+        const res = await fetch(`/api/bookings/${encodeURIComponent(ref)}`);
+        if (!res.ok) throw new Error('Booking not found');
+        const booking = await res.json();
+        
+        document.getElementById('vehicleInfo').textContent = 
+          `${booking.carId ? 'Loading...' : 'Unknown'}`;
+        document.getElementById('rentalPeriod').textContent = 
+          `${booking.from} to ${booking.to}`;
+        document.getElementById('monthlyRate').textContent = 
+          booking.monthlyRate ? `$${booking.monthlyRate.toLocaleString()}/month` : '—';
+        document.getElementById('customerName').textContent = booking.name;
+        document.getElementById('customerEmail').textContent = booking.email || '—';
+        document.getElementById('customerPhone').textContent = booking.phone || '—';
+
+        // Load vehicle details
+        if (booking.carId) {
+          const vRes = await fetch(`/api/vehicles/${encodeURIComponent(booking.carId)}`);
+          if (vRes.ok) {
+            const vehicle = await vRes.json();
+            document.getElementById('vehicleInfo').textContent = 
+              `${vehicle.year} ${vehicle.name} ${vehicle.trim || ''}`.trim();
+          }
+        }
+
+        // Load PDF preview
+        const pdfRes = await fetch(`/api/contracts/preview?ref=${encodeURIComponent(ref)}`);
+        if (pdfRes.ok) {
+          const blob = await pdfRes.blob();
+          document.getElementById('pdfPreview').src = URL.createObjectURL(blob);
+        }
+      } catch (err) {
+        showStatus('Error loading booking details: ' + err.message, 'error');
+      }
+    }
+
+    submitBtn.addEventListener('click', async () => {
+      if (submitBtn.disabled) return;
+      
+      submitBtn.disabled = true;
+      submitText.textContent = 'Uploading...';
+      showStatus('Uploading documents...', 'info');
+
+      try {
+        const contractData = contractFile.files[0] ? await fileToBase64(contractFile.files[0]) : null;
+        const licenseData = licenseFile.files[0] ? await fileToBase64(licenseFile.files[0]) : null;
+
+        const res = await fetch('/api/contracts/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            bookingRef,
+            contractFile: contractData,
+            licenseFile: licenseData
+          })
+        });
+
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || 'Upload failed');
+
+        showStatus('✅ Documents uploaded successfully! We\'ll review them and get back to you soon.', 'success');
+        
+        // Update progress
+        document.querySelector('[data-step="2"]').classList.remove('active');
+        document.querySelector('[data-step="2"]').classList.add('completed');
+        document.querySelector('[data-step="2"] .step-circle').textContent = '✓';
+        document.querySelector('[data-step="3"]').classList.add('active');
+        
+        submitBtn.style.display = 'none';
+        cancelBtn.textContent = 'Close';
+        
+      } catch (err) {
+        showStatus('❌ ' + err.message, 'error');
+        submitBtn.disabled = false;
+        submitText.textContent = 'Submit Documents';
+      }
+    });
+
+    cancelBtn.addEventListener('click', () => {
+      if (cancelBtn.textContent === 'Close') {
+        window.close();
+      } else {
+        window.location.href = 'index.html';
+      }
+    });
+
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve({
+          data: reader.result.split(',')[1],
+          name: file.name,
+          size: file.size,
+          type: file.type
+        });
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function showStatus(message, type) {
+      statusMessage.className = `status-message ${type}`;
+      statusMessage.textContent = message;
+    }
+
+    function viewFullTerms() {
+      // Could open the PDF in a new tab
+      window.open(`/api/contracts/preview?ref=${encodeURIComponent(bookingRef)}`, '_blank');
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,95 @@
+PLACEHOLDER PHOTO CREDITS
+=========================
+
+Every image in images/ is a Wikimedia Commons file used as a stand-in
+for this mockup. Most are CC BY or CC BY-SA, which require attribution
+(and share-alike). They are fine for review and demos, but replace them
+with client-owned inventory photography before the site goes live.
+
+NOTE: the hero video and its poster frame are client-supplied,
+not Commons files, so they are not listed here.
+
+cars/audi-q5.jpg
+  Audi Q5 (FY) Washington DC Metro Area, USA.jpg
+  by OWS Photography  [CC BY 4.0]
+  https://commons.wikimedia.org/wiki/File:Audi_Q5_(FY)_Washington_DC_Metro_Area,_USA.jpg
+
+cars/bmw-330i.jpg
+  BMW 330i (G20) Washington DC Metro Area, USA.jpg
+  by OWS Photography  [CC BY 4.0]
+  https://commons.wikimedia.org/wiki/File:BMW_330i_(G20)_Washington_DC_Metro_Area,_USA.jpg
+
+cars/chevrolet-suburban.jpg
+  2017 Chevrolet Suburban LT, Rear Right, 09-11-2021.jpg
+  by Elise240SX  [CC BY-SA 4.0]
+  https://commons.wikimedia.org/wiki/File:2017_Chevrolet_Suburban_LT,_Rear_Right,_09-11-2021.jpg
+
+cars/ford-f150.jpg
+  '21 Ford F-150 XLT Crew Cab.jpg
+  by Bull-Doser  [Public domain]
+  https://commons.wikimedia.org/wiki/File:%2721_Ford_F-150_XLT_Crew_Cab.jpg
+
+cars/ford-mustang-gt.jpg
+  Ford Mustang GT Convertible (51119268739).jpg
+  by Alexandre Prevot from Nancy, France  [CC BY-SA 2.0]
+  https://commons.wikimedia.org/wiki/File:Ford_Mustang_GT_Convertible_(51119268739).jpg
+
+cars/honda-accord.jpg
+  2021 Honda Accord Sport 2.0T, front right, 09-06-2022.jpg
+  by MercurySable99  [CC BY-SA 4.0]
+  https://commons.wikimedia.org/wiki/File:2021_Honda_Accord_Sport_2.0T,_front_right,_09-06-2022.jpg
+
+cars/jeep-wrangler.jpg
+  0 Jeep Wrangler Rubicon (JL) 1.jpg
+  by Benespit  [CC BY-SA 4.0]
+  https://commons.wikimedia.org/wiki/File:0_Jeep_Wrangler_Rubicon_(JL)_1.jpg
+
+cars/mercedes-c300.jpg
+  MERCEDES-BENZ C-CLASS LWB (V206) China.jpg
+  by Dinkun Chen  [CC BY-SA 4.0]
+  https://commons.wikimedia.org/wiki/File:MERCEDES-BENZ_C-CLASS_LWB_(V206)_China.jpg
+
+cars/porsche-911.jpg
+  2023 Porsche 992 Carrera GTS (1).jpg
+  by Ethan Llamas  [CC BY-SA 4.0]
+  https://commons.wikimedia.org/wiki/File:2023_Porsche_992_Carrera_GTS_(1).jpg
+
+cars/rivian-r1t.jpg
+  Debut of the Rivian R1T pickup at the 2018 Los Angeles Auto Show, November 27, 2018.jpg
+  by Richard Truesdell  [CC BY-SA 4.0]
+  https://commons.wikimedia.org/wiki/File:Debut_of_the_Rivian_R1T_pickup_at_the_2018_Los_Angeles_Auto_Show,_November_27,_2018.jpg
+
+cars/tesla-model-3.jpg
+  Tesla Model 3 (2023) 1X7A1678.jpg
+  by Alexander-93  [CC BY-SA 4.0]
+  https://commons.wikimedia.org/wiki/File:Tesla_Model_3_(2023)_1X7A1678.jpg
+
+cars/toyota-rav4.jpg
+  18 Toyota RAV4 Adventure.jpg
+  by HJUdall  [CC0]
+  https://commons.wikimedia.org/wiki/File:18_Toyota_RAV4_Adventure.jpg
+
+hero/booking.jpg
+  Dülmen, Auto Bertels, Toyota GR Supra -- 2021 -- 9545.jpg
+  by Dietmar Rabich  [CC BY-SA 4.0]
+  https://commons.wikimedia.org/wiki/File:D%C3%BClmen,_Auto_Bertels,_Toyota_GR_Supra_--_2021_--_9545.jpg
+
+hero/hero.jpg
+  Trollstigen (25).jpg
+  by Palickap  [CC BY-SA 4.0]
+  https://commons.wikimedia.org/wiki/File:Trollstigen_(25).jpg
+
+hero/testimonials.jpg
+  Trollstigen (17).jpg
+  by Palickap  [CC BY-SA 4.0]
+  https://commons.wikimedia.org/wiki/File:Trollstigen_(17).jpg
+
+hero/why.jpg
+  Hakkoda Mountains, Part II- Foothills - Hakkoda6915.jpg
+  by lumoplank  [CC0]
+  https://commons.wikimedia.org/wiki/File:Hakkoda_Mountains,_Part_II-_Foothills_-_Hakkoda6915.jpg
+
+video/city.webm
+  Berlin Bundesautobahn 100 2026-03-25 mov04.webm
+  by LarsMueller  [CC0]
+  https://commons.wikimedia.org/wiki/File:Berlin_Bundesautobahn_100_2026-03-25_mov04.webm
