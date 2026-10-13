@@ -1839,6 +1839,81 @@ td[data-label="Status"] .rl-online {
   color: var(--text-3);
 }
 
+/* Deposit column — visually distinct from Paid: amber instead of green,
+   because this is a DEDUCTION from the total, not money coming in. The
+   minus sign in the text makes the direction explicit; the colour
+   reinforces it without the reader having to do the arithmetic. */
+.deposit-cell {
+  display: inline-flex; flex-direction: column; align-items: flex-end;
+  gap: 1px;
+  width: auto; padding: 2px 4px; margin: 0;
+  background: none; border: 0;
+  color: var(--warn, #E2A03F);
+  font: inherit; font-size: 13px; font-weight: 600;
+  text-align: right;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.deposit-cell:hover { background: rgba(226, 160, 63, .12); }
+.deposit-cell small {
+  font-size: 9.5px; font-weight: 600;
+  letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-3);
+}
+
+/* A screenshot the customer has uploaded and nobody has checked yet.
+
+   Deliberately neither green nor amber: green is money confirmed in,
+   amber is a deduction already agreed. This is a CLAIM — a figure the
+   customer has asserted and the office has still to look at — so it
+   reads as a task rather than as a balance. The dashed underline and
+   the muted colour keep it from being mistaken for a settled figure at
+   a glance down the column.
+
+   It replaces a plain dash, which hid the screenshot entirely: the one
+   moment the office most needs to see the proof was the one with
+   nothing to click. */
+.paid-cell.is-unverified,
+.deposit-cell.is-unverified {
+  color: var(--text-2, #8a8a93);
+  font-weight: 600;
+  text-decoration: underline dashed rgba(138, 138, 147, .55);
+  text-underline-offset: 3px;
+}
+.paid-cell.is-unverified:hover,
+.deposit-cell.is-unverified:hover {
+  background: rgba(138, 138, 147, .12);
+  color: var(--text-1, #e8e8ee);
+}
+.paid-cell.is-unverified small,
+.deposit-cell.is-unverified small {
+  color: var(--warn, #E2A03F);
+  text-decoration: none;
+}
+
+/* Fleet visibility toggle — an eye icon that flips the vehicle between
+   shown and hidden on the public site. On = green, matching the Paid
+   cell (money coming in, car listed); off = amber, matching the
+   Deposit cell (withheld). Both use the same shape and size so the
+   column stays even when the fleet varies in length. */
+.vis-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 28px; padding: 0;
+  background: none; border: 1px solid transparent; border-radius: 6px;
+  cursor: pointer; transition: background .15s, border-color .15s;
+}
+.vis-toggle svg { width: 16px; height: 16px; flex-shrink: 0; }
+.vis-on {
+  color: var(--ok, #35C17E);
+  border-color: rgba(53, 193, 126, .25);
+}
+.vis-on:hover { background: rgba(53, 193, 126, .1); }
+.vis-off {
+  color: var(--warn, #E2A03F);
+  border-color: rgba(226, 160, 63, .25);
+}
+.vis-off:hover { background: rgba(226, 160, 63, .1); }
+
 /* "Release car" — puts a no-show's car back on the site as an ordinary
    rental. It cancels a booking, so it is kept visually quieter than the
    primary action beside it and only commits behind a confirmation. */
@@ -2712,4 +2787,560 @@ td[data-label="Status"] .rl-online {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+
+/* The payment screenshot beside its ledger entry — confirming a
+   transfer means reading it, so it sits with the amount it proves. */
+.pay-shot {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .03);
+  overflow: hidden;
+  cursor: pointer;
+}
+.pay-shot:hover { border-color: var(--red); }
+.pay-shot img {
+  display: block;
+  width: 100%;
+  max-height: 190px;
+  object-fit: contain;
+  background: #0d0f12;
+}
+
+
+/* The deposit cell in Actions: the figure is editable, but the line
+   beneath says the money is already in — it is credited against the
+   total, which an empty-looking form field does not convey. */
+.dep-paid, .dep-none {
+  display: block;
+  margin-top: 4px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.dep-paid { color: #35C17E; }
+.dep-none { color: var(--text-3); font-weight: 500; }
+
+/* ======================== RENTAL DOCUMENT =========================
+
+   The agreement's editor and its version history. Two columns on a
+   desktop — the document being edited beside the versions already
+   saved — collapsing to one on a narrow screen, where the history
+   belongs under the editor rather than squeezed beside it.
+================================================================== */
+
+.doc-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 20px;
+  align-items: start;
+}
+
+.doc-editor {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+}
+
+.doc-field { display: block; margin-bottom: 16px; }
+.doc-field > span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.doc-field > span small {
+  font-weight: 500;
+  letter-spacing: .04em;
+  text-transform: none;
+}
+.doc-field input[type="text"],
+.doc-field textarea,
+.doc-section input[type="text"],
+.doc-section textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, .25);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+  resize: vertical;
+}
+.doc-field input:focus,
+.doc-field textarea:focus,
+.doc-section input:focus,
+.doc-section textarea:focus {
+  outline: none;
+  border-color: var(--red);
+  background: rgba(0, 0, 0, .35);
+}
+.doc-field input::placeholder,
+.doc-field textarea::placeholder,
+.doc-section input::placeholder,
+.doc-section textarea::placeholder { color: var(--text-3); }
+
+.doc-sections-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 22px 0 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.doc-sections-head > span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+/* One clause. Numbered down the side so the order on screen matches
+   the numbering the PDF prints and a renter quotes back ("clause 5"). */
+.doc-section {
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+.doc-section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.doc-section-n {
+  flex: none;
+  width: 24px; height: 24px;
+  display: grid; place-items: center;
+  border-radius: 6px;
+  background: var(--red-dim);
+  color: var(--red);
+  font-size: 11px;
+  font-weight: 700;
+}
+.doc-section-head input { flex: 1; min-width: 0; font-weight: 600; }
+.doc-section-del {
+  flex: none;
+  width: 26px; height: 26px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color .18s, border-color .18s;
+}
+.doc-section-del:hover { color: var(--red); border-color: var(--red); }
+
+/* ---- version history ---- */
+
+.doc-versions {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+}
+.doc-versions h3 {
+  margin: 0 0 4px;
+  font-family: var(--display);
+  font-size: 15px;
+  letter-spacing: .04em;
+}
+.doc-versions-note {
+  margin: 0 0 14px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+.doc-version-list { display: flex; flex-direction: column; gap: 10px; }
+
+.doc-version {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+  transition: border-color .18s;
+}
+/* The version customers receive. Green rather than red: this is a
+   steady state, not a warning. */
+.doc-version.is-active { border-color: rgba(53, 193, 126, .5); }
+/* The one currently open in the editor. */
+.doc-version.is-loaded { box-shadow: inset 2px 0 0 var(--red); }
+
+.doc-version-top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 4px;
+}
+.doc-version-top b { font-size: 13px; }
+.doc-badge {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(53, 193, 126, .16);
+  color: var(--ok);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.doc-badge.upload { background: rgba(226, 160, 63, .16); color: var(--warn); }
+
+.doc-version-note {
+  margin: 0 0 4px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+.doc-version-meta {
+  margin: 0 0 10px;
+  font-size: 10.5px;
+  color: var(--text-3);
+}
+.doc-version-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.doc-empty {
+  margin: 0;
+  padding: 14px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+@media (max-width: 1100px) {
+  .doc-layout { grid-template-columns: minmax(0, 1fr); }
+  .doc-versions { order: -1; }   /* history first on a narrow screen */
+}
+
+/* Choosing which version of the agreement to send. */
+.cv-modal { max-width: 460px; }
+.cv-list { max-height: 320px; overflow-y: auto; margin: 4px 0 18px; }
+.cv-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 12px;
+  margin-bottom: 7px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-2);
+  cursor: pointer;
+  transition: border-color .18s;
+}
+.cv-row:hover { border-color: var(--line-2); }
+.cv-row.is-active { border-color: rgba(53, 193, 126, .5); }
+.cv-row input { margin-top: 3px; flex: none; accent-color: var(--red); }
+.cv-body { min-width: 0; }
+.cv-body b { display: block; font-size: 12.5px; }
+.cv-body small { display: block; margin-top: 2px; font-size: 11px; color: var(--text-2); }
+.cv-body .cv-meta { color: var(--text-3); }
+.cv-none {
+  margin: 4px 0 0;
+  padding: 13px;
+  border: 1px dashed var(--line);
+  border-radius: 9px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+/* Letterhead pair sits on one line when there is room. */
+.doc-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 760px) { .doc-row2 { grid-template-columns: 1fr; } }
+
+/* A detail-table row: two label boxes, each showing the booking field
+   it prints. The key is displayed but not editable — it is the lookup,
+   and a typo there would print a blank line on every contract. */
+.doc-fields { display: flex; flex-direction: column; gap: 8px; }
+.doc-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 30px;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-2);
+}
+.doc-field-cell { min-width: 0; }
+.doc-field-cell input {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, .25);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+.doc-field-cell input:disabled { opacity: .35; }
+.doc-field-cell input:focus {
+  outline: none; border-color: var(--red); background: rgba(0, 0, 0, .35);
+}
+.doc-fkey {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  letter-spacing: .04em;
+  color: var(--text-3);
+}
+.doc-fkey i { opacity: .6; }
+@media (max-width: 760px) {
+  .doc-field-row { grid-template-columns: 1fr 30px; }
+  .doc-field-row .doc-field-cell:nth-child(2) { grid-column: 1; }
+}
+
+/* ---- walkaround videos ----
+   Played inline: a clip is watched where it sits, usually alongside
+   the photos it belongs with. */
+.ref-vids {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px;
+}
+.ref-vid {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #000;
+}
+.ref-vid video {
+  display: block; width: 100%;
+  aspect-ratio: 16 / 10; object-fit: cover;
+  background: #000;
+}
+.ref-vid figcaption {
+  padding: 6px 9px;
+  background: var(--panel-2);
+  font-size: 10.5px;
+  color: var(--text-3);
+}
+.ref-vid-note {
+  margin: 0; padding: 0 9px 8px;
+  background: var(--panel-2);
+  font-size: 11px; line-height: 1.4;
+  color: var(--text-2);
+}
+
+/* In the Photos tab modal, under that stage's stills. */
+.pm-videos {
+  grid-column: 1 / -1;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.pm-videos h4 {
+  margin: 0 0 9px;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: .12em; text-transform: uppercase;
+  color: var(--text-3);
+}
+
+/* =========================== MILES TRACKER ======================== */
+
+.miles-sum {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.miles-stat {
+  flex: 1 1 130px;
+  min-width: 0;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+.miles-stat b {
+  display: block;
+  font-family: var(--display);
+  font-size: 20px;
+  line-height: 1.1;
+}
+.miles-stat span {
+  display: block;
+  margin-top: 3px;
+  font-size: 10.5px;
+  letter-spacing: .04em;
+  color: var(--text-3);
+}
+/* Something needing attention — a missing reading, or a scan nobody
+   has checked. Amber rather than red: it is a to-do, not a fault. */
+.miles-stat.warn { border-color: rgba(226, 160, 63, .4); }
+.miles-stat.warn b { color: var(--warn); }
+
+/* A reading, editable in place. */
+.odo-cell {
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color .18s, background .18s;
+}
+.odo-cell:hover { border-color: var(--line-2); background: rgba(255,255,255,.04); }
+
+/* Read by the scanner and not yet confirmed. The figure is shown
+   because it is usually right, but marked because it might not be. */
+.odo-cell.is-ocr {
+  color: var(--warn);
+  border-color: rgba(226, 160, 63, .3);
+  border-style: dashed;
+}
+.odo-flag {
+  margin-left: 5px;
+  font-size: 10px;
+  opacity: .8;
+}
+
+/* A return reading below the pick-up reading: arithmetic cannot fix
+   that, so it asks for a human rather than printing a negative. */
+.miles-bad {
+  color: var(--red);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.miles-empty {
+  padding: 18px 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-3);
+  text-align: center;
+}
+
+/* Install instructions, shown in a sheet when the browser offers no
+   install prompt of its own (iOS Safari, Firefox). A sheet rather than
+   alert(): alert blocks the page, which stops the notification poll
+   and freezes the dashboard behind it. */
+.install-steps {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+.install-steps li { margin-bottom: 7px; }
+.install-steps strong { font-weight: 650; }
+
+.install-steps-note {
+  margin: 0;
+  padding-top: 11px;
+  border-top: 1px solid var(--line-2);
+  font-size: 12.5px;
+  line-height: 1.55;
+  opacity: .72;
+}
+
+/* ---------------------------- enquiries ---------------------------- */
+
+/* The count of outstanding enquiries, on the tab itself, so a new
+   viewing request is noticed without opening the panel to check. */
+.tab-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 7px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.enq-list { display: grid; gap: 12px; }
+
+.enq-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 18px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--card);
+}
+/* Handled ones stay readable but recede, so the eye lands on what is
+   still outstanding. Not hidden: the office needs the history. */
+.enq-card.is-handled { opacity: .55; }
+
+.enq-main { min-width: 0; }   /* lets long messages wrap, not overflow */
+
+.enq-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 7px;
+}
+
+.enq-kind {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--line-1);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+/* A viewing request is the one that needs a call back, so it is the
+   one that is coloured. */
+.enq-kind-viewing { background: rgba(214, 40, 40, .12); color: var(--red); }
+
+.enq-when { font-size: 12px; opacity: .6; }
+
+.enq-name { margin: 0 0 3px; font-size: 15px; font-weight: 650; }
+.enq-car { margin: 0 0 5px; font-size: 13px; opacity: .75; }
+
+.enq-contact { margin: 0; font-size: 13px; }
+.enq-contact a { color: var(--red); text-decoration: none; }
+.enq-contact a:hover { text-decoration: underline; }
+.enq-dot { margin: 0 8px; opacity: .4; }
+
+.enq-msg {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  opacity: .8;
+  overflow-wrap: anywhere;   /* a pasted URL must not widen the card */
+}
+
+.enq-actions { flex: 0 0 auto; }
+
+@media (max-width: 720px) {
+  /* Stacked, with the button full width: at this size the side-by-side
+     layout squeezed the message into a column a few words wide. */
+  .enq-card { flex-direction: column; gap: 12px; }
+  .enq-actions { width: 100%; }
+  .enq-actions .btn { width: 100%; min-height: 44px; }
 }

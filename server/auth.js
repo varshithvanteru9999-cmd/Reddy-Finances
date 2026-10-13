@@ -11,6 +11,14 @@ const admin = require('firebase-admin');
 const { readFileSync } = require('fs');
 const path = require('path');
 
+/* Lazy require to avoid circular dependency issues if db.js ever
+   starts importing auth.js in the future. */
+let _db = null;
+function db() {
+  if (!_db) _db = require('./db');
+  return _db;
+}
+
 function loadEnv() {
   const out = {};
   try {
@@ -254,11 +262,28 @@ function passwordLoginConfigured() {
 }
 
 /* Constant-time comparison — a length check first, because
-   timingSafeEqual throws when the two buffers differ in size. */
-function hashMatches(password) {
+   timingSafeEqual throws when the two buffers differ in size.
+
+   Deliberately ASYNCHRONOUS. The synchronous form blocks the single
+   event loop for the whole cost of the KDF (~70ms at these parameters),
+   so a handful of concurrent sign-in attempts was enough to stall every
+   request the server was handling: /api/health measured 29ms normally
+   and 4,364ms while 60 bogus logins were in flight. The async form
+   hands the work to the libuv threadpool, so the loop keeps serving
+   while the KDF runs. server/security.js caps how many of these may run
+   at once, because the threadpool is not infinite either. */
+const scryptAsync = (password, salt, keylen) =>
+  new Promise((resolve, reject) => {
+    crypto.scrypt(String(password), salt, keylen, (err, key) => {
+      if (err) reject(err);
+      else resolve(key);
+    });
+  });
+
+async function hashMatches(password) {
   let derived;
   try {
-    derived = crypto.scryptSync(String(password), ADMIN_SALT, 64).toString('hex');
+    derived = (await scryptAsync(password, ADMIN_SALT, 64)).toString('hex');
   } catch {
     return false;
   }
@@ -270,7 +295,7 @@ function hashMatches(password) {
 
 /* Returns the admin user on success, null on any failure. The caller
    must not say WHICH half was wrong — that would confirm the address. */
-function checkAdminPassword(email, password) {
+async function checkAdminPassword(email, password) {
   if (!passwordLoginConfigured()) return null;
   const given = String(email || '').trim().toLowerCase();
 
@@ -279,7 +304,7 @@ function checkAdminPassword(email, password) {
   const e1 = Buffer.from(given.padEnd(64).slice(0, 64));
   const e2 = Buffer.from(ADMIN_EMAIL.padEnd(64).slice(0, 64));
   const emailOk = crypto.timingSafeEqual(e1, e2);
-  const passOk = hashMatches(password);
+  const passOk = await hashMatches(password);
 
   if (!emailOk || !passOk) return null;
   return { id: 'admin', email: ADMIN_EMAIL, name: 'Administrator', admin: true };
@@ -316,7 +341,12 @@ function userFromRequest(req) {
   const raw = (req.headers.cookie || '').split(';').map(s => s.trim());
   const cookie = raw.find(row => row.startsWith(COOKIE_NAME + '='));
   if (!cookie) return null;
-  return unsign(cookie.slice(COOKIE_NAME.length + 1));
+  const payload = unsign(cookie.slice(COOKIE_NAME.length + 1));
+  if (!payload) return null;
+  /* A cookie without a session id is pre-revocation support: still
+     honoured, but any sign-in going forward includes one. */
+  if (payload.sid && !db().authSessionActive(payload.sid)) return null;
+  return payload;
 }
 
 /* Whether THIS request arrived over TLS, rather than whether the app's
@@ -346,18 +376,59 @@ function requestIsSecure(res) {
   return false;
 }
 
-function setSessionCookie(res, user) {
-  const token = sign(user);
+function sessionId() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+/* Every session cookie carries an opaque id; the authoritative copy of
+   whether that id is still live lives in the DB, but the in-memory Set
+   in db.js is what is actually checked on the fast path. The two
+   together mean sign-out takes effect immediately for this process and
+   within one refresh interval (30 s) for anything else sharing the DB.
+
+   setSessionCookie is async now, which it can afford to be: it is only
+   called on sign-in, a rare event, and the write is fire-and-forget —
+   the caller does not depend on it succeeding. */
+async function setSessionCookie(res, user) {
+  const sid = sessionId();
+  const expiresAt = new Date(Date.now() + AUTH_MAX_AGE_MS);
+  const token = sign({ ...user, sid });
   const secure = requestIsSecure(res) ? '; Secure' : '';
   const cookie = `${COOKIE_NAME}=${token}; Path=/; HttpOnly; SameSite=Lax${secure}; Max-Age=${Math.floor(AUTH_MAX_AGE_MS / 1000)}`;
   appendCookie(res, cookie);
+  /* Fire and forget — if the table does not exist, createAuthSession
+     returns false silently and the cookie still works (sidless). */
+  db().createAuthSession({
+    id: sid,
+    userId: user.id || '',
+    email: String(user.email || '').toLowerCase(),
+    admin: Boolean(user.admin),
+    expiresAt,
+    ip: res && res.req ? (res.req.headers['x-forwarded-for'] || '').split(',')[0].trim() : undefined,
+    userAgent: res && res.req ? String(res.req.headers['user-agent'] || '').slice(0, 255) : undefined,
+  }).catch(() => {});
 }
 
-function clearSessionCookie(res) {
+/* clearSessionCookie is async for the same reason: the session record
+   must actually be revoked, not just have the browser cookie removed. */
+async function clearSessionCookie(res) {
   /* The attributes must match the ones the cookie was set with, or the
      browser keeps the old one and the user never signs out. */
   const secure = requestIsSecure(res) ? '; Secure' : '';
   appendCookie(res, `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax${secure}; Max-Age=0`);
+  if (res && res.req) {
+    const payload = userFromRequest(res.req);
+    if (payload && payload.sid) {
+      db().revokeAuthSession(payload.sid).catch(() => {});
+    }
+  }
+}
+
+/* Convenience: revoke every session for an email except the current
+   one — used when the admin password changes so that stolen old
+   cookies die immediately. */
+async function revokeAllSessionsForEmail(email, { exceptSid = null } = {}) {
+  return db().revokeAuthSessionsForEmail(email, { exceptId: exceptSid }).catch(() => 0);
 }
 
 function appendCookie(res, cookie) {
@@ -435,4 +506,5 @@ module.exports = {
   passwordLoginConfigured,
   sessionsConfigured,
   credentialDiagnostics,
+  revokeAllSessionsForEmail,
 };

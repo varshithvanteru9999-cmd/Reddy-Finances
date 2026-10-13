@@ -190,7 +190,8 @@ function initDropzones() {
 
 /* ============================== TABS ============================== */
 
-const PANELS = ['overview', 'fleet', 'bookings', 'release', 'pending', 'photos', 'actions'];
+const PANELS = ['overview', 'fleet', 'bookings', 'release', 'pending', 'photos',
+                'actions', 'document', 'enquiries'];
 
 /* A table wider than the screen puts its scrollbar at its own foot, so
    with fourteen or sixteen columns the admin had to scroll to the last
@@ -262,6 +263,8 @@ document.querySelectorAll('.tab').forEach(tab => {
     if (tab.dataset.tab === 'release') renderRelease();
     if (tab.dataset.tab === 'photos')  renderPhotos();
     if (tab.dataset.tab === 'pending') renderPending();
+    if (tab.dataset.tab === 'document') renderDocument();
+    if (tab.dataset.tab === 'enquiries') renderEnquiries();
     /* after the panel is shown, so the wrapper has a real position */
     requestAnimationFrame(sizeTables);
   });
@@ -873,6 +876,8 @@ function askQueueProofAmount(ref, proofId) {
           bookings = await reloadBookings();
           renderBookings();
           toast(`${ref} — ${money(amount)} confirmed`);
+          /* Money checked — offer to confirm the slot, as cash does. */
+          await offerPaymentConfirmation(ref, 'online');
         } catch (err) {
           toast(err.message, true);
         }
@@ -923,6 +928,7 @@ function renderOverview() {
       </li>`).join('')
     : `<li class="tl-empty">Nothing scheduled</li>`;
 
+  renderMiles();
   initChartTooltips();
   renderReleases();
   renderPrebookingQueue();
@@ -993,16 +999,25 @@ function renderFleet() {
       <td class="num" style="font-size:13px" data-label="Odometer">${c.type === 'rental'
         ? (c.odometer != null ? Number(c.odometer).toLocaleString('en-US') + '<span class="sub">miles</span>' : '<span class="sub">not set</span>')
         : '<span class="sub">&mdash;</span>'}</td>
+      <td data-label="Visible">
+        <button class="vis-toggle ${c.isVisible !== false ? 'vis-on' : 'vis-off'}"
+                data-act="visibility" type="button"
+                title="${c.isVisible !== false ? 'Visible — click to hide from the site' : 'Hidden — click to show on the site'}">
+          ${c.isVisible !== false
+            ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
+            : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'}
+        </button>
+      </td>
       <td>
         <div class="row-actions">
           <button class="btn btn-line btn-sm" data-act="edit">Edit</button>
           <button class="btn btn-line btn-sm" data-act="del">Delete</button>
         </div>
       </td>
-    </tr>`).join('') : `<tr class="empty-row"><td colspan="7">No vehicles match</td></tr>`;
+    </tr>`).join('') : `<tr class="empty-row"><td colspan="8">No vehicles match</td></tr>`;
 
   $('fleetRows').insertAdjacentHTML('beforeend',
-    `<tr class="add-row"><td colspan="7">
+    `<tr class="add-row"><td colspan="8">
        <button class="add-inline" data-add="fleet">${ICONS.plus}Add a vehicle</button>
      </td></tr>`);
 
@@ -1097,7 +1112,7 @@ function editCar(car) {
         try {
           if (isNew) await createVehicle(fleet[fleet.length - 1]);
           else await updateVehicle(car.id, patch);
-          fleet = await loadFleet();
+          fleet = await loadFleet({ includeHidden: true });
           renderFleet();
           toast(isNew ? 'Vehicle added' : 'Vehicle updated');
         } catch (err) {
@@ -1116,12 +1131,25 @@ $('fleetRows').addEventListener('click', e => {
   const car = fleet.find(c => c.id === id);
   if (!car) return;
 
+  if (btn.dataset.act === 'visibility') {
+    btn.disabled = true;
+    return toggleVehicleVisibility(id)
+      .then(async out => {
+        fleet = await loadFleet({ includeHidden: true });
+        renderFleet();
+        toast(out && out.isVisible
+          ? `${car.year} ${car.name} is now visible on the site`
+          : `${car.year} ${car.name} hidden from the site`);
+      })
+      .catch(err => { btn.disabled = false; toast(err.message, true); });
+  }
+
   if (btn.dataset.act === 'edit') return editCar(car);
 
   if (confirm(`Delete "${car.year} ${car.name}"? This cannot be undone.`)) {
     deleteVehicleApi(id)
       .then(async out => {
-        fleet = await loadFleet();
+        fleet = await loadFleet({ includeHidden: true });
         renderFleet();
         /* a car with bookings is archived, not removed — the booking
            history has to keep pointing at something */
@@ -1140,7 +1168,7 @@ $('fleetRows').addEventListener('click', e => {
 ['fleetSearch', 'fleetType', 'fleetCat'].forEach(id => $(id).addEventListener('input', renderFleet));
 
 $('fleetReset').addEventListener('click', async () => {
-  fleet = await loadFleet();
+  fleet = await loadFleet({ includeHidden: true });
   renderFleet();
   toast('Reloaded from database');
 });
@@ -1164,13 +1192,35 @@ const carById = id => fleet.find(c => c.id === id);
    over, and pending is a balance carried in — so both are owed. Any
    other definition would put the dot and the dialog at odds with the
    figure the admin is reading in the same row. */
+/* What has actually been received against a booking: confirmed
+   payments plus the deposit.
+
+   The deposit is money in hand — the customer paid it by Zelle or
+   transfer to hold the car — so it counts towards the bill exactly as
+   a later payment does. Matches settlement() on the server. */
+/* What has actually been received: confirmed payments plus the
+   booking deposit.
+
+   The deposit is money in hand — paid online to reserve the car — so
+   it counts towards the bill as any payment does. The ADVANCE is not
+   included: that is still owed at pickup, and refunded at handback.
+   Matches settlement() on the server. */
+function amountPaid(b) {
+  return Number(b.verifiedPaid || 0) + Number(b.bookingDeposit || 0);
+}
+
 function amountDue(b) {
-  /* Rent + tolls + the deposit charged on top. `pending` is deliberately
-     NOT added: it is the unpaid remainder of these same charges, not an
-     extra one. Including it double-counted — confirming $1,500 against
-     $3,895.77 set pending to $2,395.77, which then reappeared in the
-     total and reported "$1,500 of $6,291.54". This matches the server's
-     settlement(), so the dot and the API can never disagree. */
+  /* What the customer has to hand over: rent, tolls, and the
+     refundable advance — one month's rent, paid at pickup and
+     returned at handback.
+
+     The booking deposit is NOT added: it is money already received,
+     so it is credited in amountPaid() instead. Matches settlement()
+     on the server, or the dashboard and the API would report
+     different figures for the same booking.
+
+     `pending` is not added either: it is the unpaid remainder of
+     these same charges, not an extra one. */
   return Number(b.total ?? bookingTotal(b))
        + Number(b.tolls || 0)
        + Number(b.advance || 0);
@@ -1212,7 +1262,7 @@ function statusLabel(b) {
 
 function paymentState(b) {
   const due = amountDue(b);
-  const paid = Number(b.verifiedPaid || 0);
+  const paid = amountPaid(b);
   const pendingUnverified = Number(b.unverifiedCount || 0);
 
   /* A booking with nothing owed is settled by definition; without this
@@ -1251,6 +1301,81 @@ function split(b) {
   return cash > 0 && online > 0
     ? ` (${money(cash)} cash, ${money(online)} online)`
     : '';
+}
+
+/* The reservation deposit, on its own, for the Deposit column.
+
+   This is NOT an extra charge — it is money the customer paid up front
+   that gets deducted from the rental total. A $500 booking with a $100
+   deposit means $400 still owes. The column shows it as a negative
+   figure so the eye reads Total ($500) → Deposit (−$100) → what's
+   left.
+
+   The figure is the CONFIRMED prebooking payment only. An unverified
+   screenshot is deliberately left out: the office has not looked at
+   it yet, and a booking that reads "deposit paid" because someone
+   uploaded a photo of a pending transfer is exactly the mistake this
+   whole ledger exists to prevent. The proof list behind the click
+   still shows unverified entries, so nothing is hidden. */
+/* "Nothing confirmed yet" for a money cell.
+
+   A dash is right only when there is genuinely nothing behind it. When
+   a screenshot is waiting to be checked, the dash was hiding the one
+   thing the office needed to look at, so the cell becomes a button into
+   the proof list instead. Shared by the Paid columns in both tabs. */
+function unconfirmedCell(b, dashTitle) {
+  const waiting = Number(b.unverifiedCount || 0);
+  if (!waiting) {
+    return `<span class="sub"${dashTitle ? ` title="${esc(dashTitle)}"` : ''}>&mdash;</span>`;
+  }
+  return `<button class="paid-cell is-unverified" data-act="proof"
+                  title="${esc(`${waiting} payment screenshot${waiting > 1 ? 's' : ''} `
+                    + 'uploaded and not yet checked. Click to view and confirm.')}"
+          >${waiting > 1 ? waiting + ' screenshots' : 'Screenshot'}<small>to check</small></button>`;
+}
+
+function depositCell(b) {
+  const fee = Number(b.prebookingPaid || 0);
+
+  if (fee) {
+    return `<button class="deposit-cell" data-act="proof"
+                    title="${esc(`$${fee.toFixed(2)} deposit deducted from the rental total. Click for every payment on this booking.`)}"
+            >&minus;${money(fee)}<small>deducted</small></button>`;
+  }
+
+  /* Nothing CONFIRMED yet — but the customer may well have uploaded
+     their deposit screenshot, and that is exactly when the office needs
+     to see it. This used to render a plain dash: the screenshot existed,
+     sat in the modal behind this cell, and there was nothing to click to
+     reach it. The one state where looking at the proof is the whole job
+     was the one state with no way in.
+
+     So when a proof is waiting, the cell becomes a button like any
+     other. It shows the amount the customer says they paid — their
+     claimed deposit, or what OCR read off the image — marked clearly as
+     unconfirmed, so nobody mistakes it for money received. */
+  const waiting = Number(b.unverifiedCount || 0);
+  const proofs  = Number(b.proofCount || 0);
+
+  if (waiting || proofs) {
+    const claimed = Number(b.bookingDeposit || 0);
+    /* "to check" is only honest while something IS unchecked. Proofs
+       that have all been seen, but none of which was a deposit, get
+       the neutral wording instead. */
+    const label = waiting ? (claimed ? money(claimed) : 'Screenshot') : 'View';
+    const sub   = waiting ? 'to check' : 'payments';
+    const title = waiting
+      ? `${waiting} payment screenshot${waiting > 1 ? 's' : ''} not yet checked`
+        + (claimed ? ` — customer states a ${money(claimed)} deposit` : '')
+        + '. Click to view and confirm.'
+      : 'Click to see every payment on this booking.';
+    return `<button class="deposit-cell${waiting ? ' is-unverified' : ''}" data-act="proof"
+                    title="${esc(title)}"
+            >${label}<small>${sub}</small></button>`;
+  }
+
+  /* No deposit, no screenshot: genuinely nothing to show. */
+  return '<span class="sub">&mdash;</span>';
 }
 
 function bookingTotal(b) {
@@ -1333,7 +1458,7 @@ function pendingRows() {
     .filter(b => b.status !== 'Cancelled')
     .map(b => {
       const due = amountDue(b);
-      const paid = Number(b.verifiedPaid || 0);
+      const paid = amountPaid(b);
       return { b, due, paid, owed: Math.round((due - paid) * 100) / 100 };
     })
     /* A cent of rounding noise is not a debt. */
@@ -1442,7 +1567,7 @@ function renderBookingStats() {
 
   /* What has actually arrived: verified payments only. Money someone
      has claimed to send but nobody has checked is not revenue. */
-  const received = billable.reduce((sum, b) => sum + Number(b.verifiedPaid || 0), 0);
+  const received = billable.reduce((sum, b) => sum + amountPaid(b), 0);
 
   /* The shortfall, floored at zero — an overpayment is not a debt. */
   const outstanding = Math.max(0, due - received);
@@ -1646,6 +1771,28 @@ function photoStrip(items, emptyText) {
   }).join('') + `</div>`;
 }
 
+/* Walkaround videos. Played inline rather than opened in a lightbox:
+   a video is watched where it sits, and the office is usually
+   comparing it against the photos beside it.
+
+   The size line shows what was saved by compressing in the browser —
+   useful for spotting a device that skipped it and sent the original. */
+function videoStrip(items, emptyText) {
+  if (!items || !items.length) return `<p class="pay-empty">${esc(emptyText)}</p>`;
+  return `<div class="ref-vids">` + items.map(v => {
+    const src = photoUrl(v.src);
+    const mb = v.bytes ? (v.bytes / 1048576).toFixed(1) + ' MB' : '';
+    const orig = v.originalBytes && v.bytes && v.originalBytes > v.bytes
+      ? ' (from ' + (v.originalBytes / 1048576).toFixed(0) + ' MB)' : '';
+    const secs = v.durationSecs ? v.durationSecs + 's' : '';
+    return `<figure class="ref-vid">
+        <video src="${esc(src)}" controls preload="metadata" playsinline></video>
+        <figcaption>${esc([secs, mb].filter(Boolean).join(' · '))}${esc(orig)}</figcaption>
+        ${v.note ? `<p class="ref-vid-note">${esc(v.note)}</p>` : ''}
+      </figure>`;
+  }).join('') + `</div>`;
+}
+
 /* Damage photos carry the renter's own note, which is the point of
    them — "scratch on rear bumper" is what the office is reading. */
 function damageStrip(items) {
@@ -1700,6 +1847,15 @@ async function openRefSheet(ref) {
         ${p.verified ? '' : '<span class="pay-chip pending">Awaiting confirmation</span>'}
         ${p.note ? `<span class="pay-entry-note">${esc(p.note)}</span>` : ''}
       </div>
+      ${/* The screenshot the customer sent. Confirming a payment means
+           reading the transfer — the amount alone is only their claim,
+           so the evidence belongs beside it rather than behind another
+           click in a different tab. */''}
+      ${p.hasImage ? `
+        <button type="button" class="pay-shot"
+                onclick="openFullImage('/api/payment-image/${Number(p.id)}')">
+          <img src="/api/payment-image/${Number(p.id)}" alt="Payment screenshot" loading="lazy">
+        </button>` : ''}
     </div>`).join('');
 
   const settled = detail.payments
@@ -1707,6 +1863,7 @@ async function openRefSheet(ref) {
     .reduce((n, p) => n + Number(p.amount || 0), 0);
 
   const pics = detail.photos || { pickup: [], return: [], damage: [] };
+  const vids = detail.videos || { pickup: [], return: [], damage: [] };
 
   const list = detail.payments.length
     ? `${rows}<div class="pay-entry pay-entry-total">
@@ -1743,7 +1900,16 @@ async function openRefSheet(ref) {
     { key: 'returnPhotos', label: 'Return photos', type: 'html', full: true,
       html: photoStrip(pics.return, 'No return photos uploaded yet.') },
     { key: 'damagePhotos', label: 'Damage photos', type: 'html', full: true,
-      html: damageStrip(pics.damage) }
+      html: damageStrip(pics.damage) },
+    /* The optional clips, each under the photos it belongs with. Only
+       shown when there is one — three "no video" lines on every sheet
+       would be noise. */
+    ...(vids.pickup.length ? [{ key: 'pickupVideo', label: 'Pick-up video',
+      type: 'html', full: true, html: videoStrip(vids.pickup, '') }] : []),
+    ...(vids.return.length ? [{ key: 'returnVideo', label: 'Return video',
+      type: 'html', full: true, html: videoStrip(vids.return, '') }] : []),
+    ...(vids.damage.length ? [{ key: 'damageVideo', label: 'Damage video',
+      type: 'html', full: true, html: videoStrip(vids.damage, '') }] : [])
   ], async v => {
     /* Only the referral is editable; the rest is shown for reference. */
     await request(`/bookings/${encodeURIComponent(ref)}/referral`, {
@@ -1829,9 +1995,9 @@ function renderBookings() {
         /* What has actually come in. A customer may settle in several
            instalments — clicking opens the full list rather than
            leaving one figure to stand for all of them. */
-        const paid = Number(b.verifiedPaid || 0);
+        const paid = amountPaid(b);
         const n = Number(b.paidCount || 0);
-        if (!paid) return '<span class="sub">&mdash;</span>';
+        if (!paid) return unconfirmedCell(b, 'Nothing received yet');
         /* The reservation fee is itself a cash or online payment, so
            listing it alongside those totals would count it twice. It
            is called out separately and netted off the channel it came
@@ -1849,6 +2015,7 @@ function renderBookings() {
         return `<button class="paid-cell" data-act="proof" title="${esc(title)}"
                 >${money(paid)}${n > 1 ? `<small>${n}&nbsp;payments</small>` : ''}</button>`;
       })()}</td>
+      <td class="num" data-label="Pre-book fee">${depositCell(b)}</td>
       <td class="num toll-cell" data-label="Pending">
         <input type="number" min="0" step="0.01" inputmode="decimal"
                class="toll-input${b.pending ? ' has-pending' : ''}" data-pending="${esc(b.id)}"
@@ -1894,10 +2061,10 @@ function renderBookings() {
         </div>
       </td>
     </tr>`;
-  }).join('') : `<tr class="empty-row"><td colspan="16">No bookings match</td></tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="17">No bookings match</td></tr>`;
 
   $('bookRows').insertAdjacentHTML('beforeend',
-    `<tr class="add-row"><td colspan="16">
+    `<tr class="add-row"><td colspan="17">
        <button class="add-inline" data-add="booking">${ICONS.plus}Add a booking</button>
      </td></tr>`);
 
@@ -2370,8 +2537,10 @@ function emailInvoice(bk, btn, opts = {}) {
       const el = $(`f_${k}`);
       return el ? (Number(el.value) || 0) : 0;
     };
-    const total = firstMonth + v('invTolls') + v('invAdvance') + v('invPending');
-    const paid = num(bk.verifiedPaid);
+    /* The deposit is not a charge — it is money already received, so
+       it is credited rather than added to the total. */
+    const total = firstMonth + v('invTolls') + v('invPending');
+    const paid = num(bk.verifiedPaid) + v('invAdvance');
     const box = $('f_invTotal');
     if (box) {
       box.value = paid > 0
@@ -2457,6 +2626,14 @@ async function askCashAmount(bk, box) {
           toast(`${bk.id} — ${money(paid)} in cash recorded` +
                 (res.pending > 0 ? `, ${money(res.pending)} pending`
                                  : ', paid in full'));
+
+          /* The money is in, but a Prebooked booking is still only a
+             request: nothing has gone to the customer and their photo
+             steps are shut. Taking cash at the counter is the moment
+             that usually settles it, so offer the confirmation here
+             rather than making the office remember the envelope.
+             (The helper ignores anything not Prebooked.) */
+          await offerPaymentConfirmation(bk.id, 'cash');
         } catch (err) {
           toast(err.message, true);
         }
@@ -2940,11 +3117,16 @@ This cannot be undone.`
 
     confirmBox.disabled = true;
     verifyPaymentProof(ref, proofId, { amount: Number(scanned) })
-      .then(res => {
+      .then(async res => {
         toast(`${ref} — ${money(Number(scanned))} confirmed` +
               (res && res.pending > 0 ? `, ${money(res.pending)} still pending` : ''));
         renderQueue();
         renderReleases();
+        /* bookings must be refreshed before offering: the helper reads
+           the booking's status from it, and this path did not reload. */
+        bookings = await reloadBookings();
+        renderBookings();
+        await offerPaymentConfirmation(ref, 'online');
       })
       .catch(err => {
         confirmBox.checked = false;
@@ -3229,19 +3411,28 @@ function renderActions() {
       <td data-label="To">${b.openReturn
         ? `<span class="open-return" title="Open return — the customer has not fixed a return date. Rent is billed to the end of the month; ${esc(b.to)} is the current month end, not an agreed hand-back.">${esc(b.to)}<small>Open return</small></span>`
         : esc(b.to)}</td>
-      <td class="num toll-cell" data-label="Advance">
+      ${/* The deposit the customer paid to hold the car. Editable,
+            because the office sometimes takes a different figure — but
+            it also says plainly that the money is IN, since it is
+            credited against the bill and that is easy to doubt when
+            the cell looks like an empty form field. */''}
+      <td class="num toll-cell" data-label="Deposit">
         <input type="number" min="0" step="0.01" inputmode="decimal"
                class="toll-input" data-advance="${esc(b.id)}"
                value="${b.advance || ''}" placeholder="0.00"
-               title="Advance collected — defaults to one month's rent">
+               title="Deposit paid by the customer — credited against the total">
+        ${Number(b.advance || 0) > 0
+          ? `<small class="dep-paid" title="Credited against the total">
+               ${esc(money(Number(b.advance)))} received</small>`
+          : '<small class="dep-none">no deposit</small>'}
       </td>
       <td class="num" data-label="Total">${money(amountDue(b))}</td>
       <td class="num" data-label="Paid">${(() => {
         /* Same figure the Bookings tab shows: only confirmed payments,
            with every instalment behind the click. */
-        const paid = Number(b.verifiedPaid || 0);
+        const paid = amountPaid(b);
         const n = Number(b.paidCount || 0);
-        if (!paid) return '<span class="sub">&mdash;</span>';
+        if (!paid) return unconfirmedCell(b, 'Nothing received yet');
         const fee = Number(b.prebookingPaid || 0);
         const cash = Number(b.paidCash || 0);
         const online = Number(b.paidOnline || 0);
@@ -3255,6 +3446,7 @@ function renderActions() {
                         title="${esc(`${n} payment${n > 1 ? 's' : ''}: ${bits.join(' + ')}`)}"
                 >${money(paid)}${n > 1 ? `<small>${n}&nbsp;payments</small>` : ''}</button>`;
       })()}</td>
+      <td class="num" data-label="Pre-book fee">${depositCell(b)}</td>
       <td class="num toll-cell" data-label="Pending">
         <input type="number" min="0" step="0.01" inputmode="decimal"
                class="toll-input${b.pending ? ' has-pending' : ''}" data-pending="${esc(b.id)}"
@@ -3277,10 +3469,10 @@ function renderActions() {
       </td>
       <td class="act-cell">${actionButtons(b)}</td>
     </tr>`;
-  }).join('') : `<tr class="empty-row"><td colspan="14">No bookings match</td></tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="15">No bookings match</td></tr>`;
 
   $('actRows').insertAdjacentHTML('beforeend',
-    `<tr class="add-row"><td colspan="14">
+    `<tr class="add-row"><td colspan="15">
        <button class="add-inline" data-add="booking">${ICONS.plus}Add a booking</button>
      </td></tr>`);
 }
@@ -3294,6 +3486,16 @@ $('actRows').addEventListener('click', async e => {
     const row = refBtn.closest('tr');
     const id = row && (row.dataset.id || refBtn.textContent.trim());
     if (id) return openRefSheet(id);
+  }
+
+  /* The Paid and Deposit cells open the payment ledger, exactly as they
+     do in Bookings. Without this the deposit figure read as a plain
+     number here while the identical cell one tab over was clickable. */
+  const proofBtn = e.target.closest('button[data-act="proof"]');
+  if (proofBtn) {
+    const row = proofBtn.closest('tr');
+    const bk = bookings.find(b => b.id === (row && row.dataset.id));
+    return bk ? showPaymentProofs(bk) : undefined;
   }
 
   const btn = e.target.closest('button.act-ico[data-action]');
@@ -3425,27 +3627,102 @@ $('actRows').addEventListener('click', async e => {
   /* Send contract action */
   if (action === 'send-contract') {
     if (!bk.email) return toast('Customer email not available', true);
-    if (!confirm(`Send rental agreement to ${bk.name} (${bk.email})?`)) return;
-    
+
+    /* Which wording to send. The version marked "in use" is selected,
+       so pressing send without a thought does the expected thing; the
+       list is there for the case where an older wording is the right
+       one — a customer part-way through a term, say, who should not be
+       handed clauses that were written after they booked. */
+    const choice = await askContractVersion(bk);
+    if (choice === null) return;          /* cancelled */
+
     btn.disabled = true;
     try {
       const res = await fetch(`/api/bookings/${encodeURIComponent(ref)}/send-contract`, {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(choice.templateId ? { templateId: choice.templateId } : {})
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Failed to send contract');
-      
+
       bookings = await reloadBookings();
       renderActions();
       renderBookings();
       renderOverview();
-      toast(`Contract sent to ${bk.email}`);
+      toast(`Contract sent to ${bk.email}` +
+            (choice.version ? ` (version ${choice.version})` : ''));
     } catch (err) {
       btn.disabled = false;
       toast(err.message, true);
     }
     return;
   }
+
+/* Which version of the agreement to send.
+
+   Resolves with { templateId, version } or null if the office backs
+   out. templateId is null when no version has ever been saved, which
+   means "use the built-in wording" — the server handles that case, so
+   a fresh install sends a contract exactly as it always did.
+
+   The version in use is pre-selected. Sending a different one is a
+   deliberate act, so it takes a deliberate click. */
+async function askContractVersion(bk) {
+  let versions = [];
+  try { versions = await request('/document-templates?type=rental_agreement'); }
+  catch { versions = []; }
+
+  const active = versions.find(v => v.isActive) || null;
+
+  return new Promise(resolve => {
+    const host = document.createElement('div');
+    const rows = versions.length ? versions.map(v => `
+      <label class="cv-row${v.isActive ? ' is-active' : ''}">
+        <input type="radio" name="cvPick" value="${v.id}"${v.isActive ? ' checked' : ''}>
+        <span class="cv-body">
+          <b>Version ${v.version}${v.isActive ? ' — in use' : ''}</b>
+          ${v.note ? `<small>${esc(v.note)}</small>` : ''}
+          <small class="cv-meta">${esc(timeAgo(v.createdAt))}</small>
+        </span>
+      </label>`).join('') : `
+      <p class="cv-none">No edited version has been saved, so the built-in
+         wording will be sent. You can edit it in the Document tab.</p>`;
+
+    host.innerHTML = `
+      <div class="ap-backdrop" role="dialog" aria-modal="true" aria-labelledby="cvTitle">
+        <div class="ap-modal cv-modal">
+          <h3 id="cvTitle">Send the rental agreement</h3>
+          <p class="ap-sub">${esc(bk.name || 'Customer')} &middot; ${esc(bk.email || '')}</p>
+          <div class="cv-list">${rows}</div>
+          <div class="ap-actions">
+            <button type="button" class="btn btn-line btn-sm" id="cvCancel">Cancel</button>
+            <button type="button" class="btn btn-red btn-sm" id="cvOk">Send</button>
+          </div>
+        </div>
+      </div>`;
+
+    const backdrop = host.firstElementChild;
+    document.body.appendChild(backdrop);
+
+    const close = value => {
+      backdrop.remove();
+      document.removeEventListener('keydown', onKey);
+      resolve(value);
+    };
+    const onKey = e => { if (e.key === 'Escape') close(null); };
+    document.addEventListener('keydown', onKey);
+    backdrop.addEventListener('click', e => { if (e.target === backdrop) close(null); });
+    backdrop.querySelector('#cvCancel').onclick = () => close(null);
+    backdrop.querySelector('#cvOk').onclick = () => {
+      const picked = backdrop.querySelector('input[name="cvPick"]:checked');
+      if (!picked) return close({ templateId: null, version: null });
+      const v = versions.find(x => String(x.id) === picked.value);
+      close({ templateId: Number(picked.value), version: v ? v.version : null });
+    };
+    setTimeout(() => backdrop.querySelector('#cvOk').focus(), 30);
+  });
+}
 
 /* Approving a booking asks where the car is collected from.
 
@@ -3456,6 +3733,50 @@ $('actRows').addEventListener('click', async e => {
    and carried into the confirmation email.
 
    Resolves with the location string, or null if the admin backs out. */
+/* Money has arrived on a booking the office has not confirmed yet.
+
+   However it was paid — cash at the counter or a transfer the office
+   has just checked — recording it leaves the booking Prebooked: the
+   customer has been told nothing, and their vehicle photo steps stay
+   shut. That is the gap this closes, and it closes it the same way for
+   both, because from the customer's side there is no difference.
+
+   Confirming is still a decision, so it is offered rather than taken —
+   the office types the pick-up address and the customer gets the same
+   email the envelope sends. Declining is fine; the payment stands
+   either way, and the envelope is still there to send later. */
+async function offerPaymentConfirmation(ref, how = 'cash') {
+  const bk = bookings.find(b => b.id === ref);
+  if (!bk) return;
+  /* Only a booking still awaiting a decision. One already Confirmed or
+     Active has had its email; a part payment on it must not re-open
+     this dialog. */
+  if (String(bk.status) !== 'Prebooked') return;
+  if (!bk.email) {
+    return toast(`${ref} paid, but there is no email address to confirm to`, true);
+  }
+
+  const paidBy = how === 'online' ? 'paid online' : 'paid in cash';
+  const place = await askPickupLocation(ref, bk, '', {
+    title: `Confirm ${ref} — ${paidBy}`,
+    confirm: 'Confirm & send',
+    current: bk.pickupLocation || ''
+  });
+  if (place === null) return;   /* left Prebooked, payment recorded */
+
+  try {
+    await sendSlotConfirmation(ref, place);
+    bookings = await reloadBookings();
+    renderActions();
+    renderBookings();
+    renderOverview();
+    notifications?.refresh();
+    toast(`${ref} confirmed — photo uploads open on the pick-up date`);
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+
 function askPickupLocation(ref, bk, paperwork, opts = {}) {
   /* The same dialog serves approving a booking and re-sending its
      confirmation; only the wording and the starting value differ. */
@@ -3727,6 +4048,132 @@ $('actRows').addEventListener('keydown', e => {
 
 ['actSearch', 'actFilter'].forEach(id => $(id).addEventListener('input', renderActions));
 
+/* --------------------------- enquiries ---------------------------- */
+
+/* Viewing requests and other messages from the website.
+
+   These were being written to the enquiries table and never read back:
+   nothing in the dashboard showed them and there was no route to fetch
+   them, so a customer asking to view a car for sale was told "we will
+   be in touch" and the office never saw the request. */
+
+let enquiryRows = [];
+
+const ENQ_LABEL = {
+  viewing: 'Viewing request',
+  consultation: 'Consultation',
+  sell: 'Selling a car',
+  general: 'General enquiry'
+};
+
+/* "14 Oct 2026, 3:42 PM" — the date alone is not enough when several
+   arrive the same day and the office is working through them in order. */
+function enqWhen(value) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (isNaN(d)) return '—';
+  return d.toLocaleString('en-US', {
+    day: 'numeric', month: 'short', year: 'numeric',
+    hour: 'numeric', minute: '2-digit'
+  });
+}
+
+async function renderEnquiries() {
+  const list = $('enqList');
+  if (!list) return;
+  list.innerHTML = '<p class="muted">Loading…</p>';
+  try {
+    const kind = $('enqFilter') ? $('enqFilter').value : '';
+    enquiryRows = await request('/enquiries' + (kind ? '?kind=' + encodeURIComponent(kind) : ''));
+  } catch (err) {
+    list.innerHTML = `<p class="muted">Could not load enquiries — ${esc(err.message)}</p>`;
+    return;
+  }
+  paintEnquiries();
+  refreshEnquiryBadge();
+}
+
+function paintEnquiries() {
+  const list = $('enqList');
+  if (!enquiryRows.length) {
+    list.innerHTML = '<p class="muted">No enquiries yet.</p>';
+    return;
+  }
+  list.innerHTML = enquiryRows.map(e => {
+    /* Phone and email are made actionable: this list exists to be
+       replied to, and a number that has to be copied out by hand is a
+       step between the office and the customer for no reason. */
+    const contact = [
+      /* esc already escapes quotes, so it is safe inside an attribute. */
+      e.phone ? `<a href="tel:${esc(String(e.phone).replace(/[^\d+]/g, ''))}">${esc(e.phone)}</a>` : '',
+      e.email ? `<a href="mailto:${esc(e.email)}">${esc(e.email)}</a>` : ''
+    ].filter(Boolean).join('<span class="enq-dot">·</span>');
+
+    return `
+      <article class="enq-card${e.handled ? ' is-handled' : ''}" data-id="${e.id}">
+        <div class="enq-main">
+          <div class="enq-top">
+            <span class="enq-kind enq-kind-${esc(e.kind)}">${esc(ENQ_LABEL[e.kind] || e.kind)}</span>
+            <span class="enq-when">${esc(enqWhen(e.createdAt))}</span>
+          </div>
+          <h4 class="enq-name">${esc(e.name || 'No name given')}</h4>
+          ${e.carMake ? `<p class="enq-car">${esc(e.carMake)}</p>` : ''}
+          <p class="enq-contact">${contact || '<span class="muted">No contact details</span>'}</p>
+          ${e.message ? `<p class="enq-msg">${esc(e.message)}</p>` : ''}
+        </div>
+        <div class="enq-actions">
+          <button type="button" class="btn btn-line btn-sm" data-enq-handled="${e.id}">
+            ${e.handled ? 'Reopen' : 'Mark contacted'}
+          </button>
+        </div>
+      </article>`;
+  }).join('');
+}
+
+/* The count of outstanding enquiries, on the tab, so a request is
+   noticed without opening the panel to look. */
+function refreshEnquiryBadge() {
+  const badge = $('enqBadge');
+  if (!badge) return;
+  const waiting = enquiryRows.filter(e => !e.handled).length;
+  badge.textContent = waiting;
+  badge.hidden = waiting === 0;
+}
+
+/* Delegated, because the cards are repainted on every change. */
+$('enqList')?.addEventListener('click', async e => {
+  const btn = e.target.closest('[data-enq-handled]');
+  if (!btn) return;
+  const id = Number(btn.dataset.enqHandled);
+  const row = enquiryRows.find(r => r.id === id);
+  if (!row) return;
+  btn.disabled = true;
+  try {
+    await request(`/enquiries/${id}/handled`, {
+      method: 'POST',
+      body: JSON.stringify({ handled: !row.handled })
+    });
+    row.handled = !row.handled;
+    /* Re-sorted the way the server would, so a reopened enquiry moves
+       back up with the outstanding ones instead of staying put. */
+    enquiryRows.sort((a, b) =>
+      (a.handled - b.handled) || (new Date(b.createdAt) - new Date(a.createdAt)));
+    paintEnquiries();
+    refreshEnquiryBadge();
+    toast(row.handled ? 'Marked as contacted' : 'Put back on the list');
+  } catch (err) {
+    btn.disabled = false;
+    toast(err.message || 'Could not update that enquiry', true);
+  }
+});
+
+$('enqFilter')?.addEventListener('change', renderEnquiries);
+$('enqReload')?.addEventListener('click', renderEnquiries);
+
+/* Loaded once at startup so the badge is right before the tab is ever
+   opened — the point of the badge is to be seen without looking. */
+renderEnquiries().catch(() => {});
+
 /* ---------------------------- install ----------------------------- */
 
 /* Chrome/Edge/Android fire beforeinstallprompt and let us show our own
@@ -3745,7 +4192,9 @@ window.addEventListener('beforeinstallprompt', e => {
 window.addEventListener('appinstalled', () => {
   installPrompt = null;
   if (installBtn) installBtn.hidden = true;
-  toast('Installed — open it from your home screen or app list');
+  /* Named, because the customer site installs from the same origin and
+     two unlabelled icons would be indistinguishable on a home screen. */
+  toast('Dashboard installed — open "Reddy Admin" from your home screen or app list');
 });
 
 if (installBtn) {
@@ -3763,33 +4212,49 @@ if (installBtn) {
 
   installBtn.addEventListener('click', async () => {
     if (installPrompt) {
-      installPrompt.prompt();
-      const { outcome } = await installPrompt.userChoice;
-      if (outcome === 'accepted') installBtn.hidden = true;
+      /* Taken before prompting: a prompt can only be used once, so a
+         second click must not replay a spent one and do nothing. */
+      const prompt = installPrompt;
       installPrompt = null;
+      try {
+        await prompt.prompt();
+        const { outcome } = await prompt.userChoice;
+        if (outcome === 'accepted') installBtn.hidden = true;
+        else toast('Install cancelled — the button stays if you change your mind');
+      } catch {
+        /* Already consumed, or the gesture expired. */
+        toast('Install could not be started — use the browser menu instead', true);
+      }
       return;
     }
-    if (isIOS) {
-      alert([
-        'To install on iPhone or iPad:',
-        '',
-        '1. Tap the Share button at the bottom of Safari',
-        '2. Scroll down and tap "Add to Home Screen"',
-        '3. Tap Add',
-        '',
-        'The dashboard then opens like an app.'
-      ].join('\n'));
-      return;
-    }
-    alert([
-      'To install:',
-      '',
-      'Look for the install icon in your browser address bar, or open',
-      'the browser menu and choose "Install" / "Add to Home screen".',
-      '',
-      'Chrome, Edge and Android browsers support this. Safari on Mac',
-      'uses File > Add to Dock.'
-    ].join('\n'));
+    /* No prompt to use, so explain how this browser does it.
+
+       A sheet rather than alert(): alert blocks the page until it is
+       dismissed, which stops the notification poll and freezes the
+       dashboard behind it. It also cannot show the steps as a list. */
+    const steps = isIOS
+      ? ['Tap the <strong>Share</strong> button at the bottom of Safari '
+         + '(a square with an arrow pointing up).',
+         'Scroll down and tap <strong>Add to Home Screen</strong>.',
+         'Tap <strong>Add</strong>.']
+      : ['Look for the install icon in the address bar, or open the browser '
+         + 'menu (<strong>⋮</strong>).',
+         'Choose <strong>Install</strong>, or <strong>Add to Home screen</strong>.'];
+
+    const note = isIOS
+      ? 'Safari is the only browser on iPhone that can install an app.'
+      : 'Chrome, Edge and Android support this. Safari on Mac uses '
+        + '<strong>File &rsaquo; Add to Dock</strong>.';
+
+    openSheet(
+      'Install the dashboard',
+      'It opens in its own window, with its own icon — no browser tabs.',
+      [{ type: 'html', full: true, html: `
+        <ol class="install-steps">${steps.map(s => `<li>${s}</li>`).join('')}</ol>
+        <p class="install-steps-note">${note}</p>` }],
+      () => true,
+      { submitLabel: 'Done' }
+    );
   });
 }
 
@@ -3803,7 +4268,7 @@ $('adminLogout').addEventListener('click', async () => {
 });
 
 $('releaseReload').addEventListener('click', async () => {
-  [fleet, bookings] = await Promise.all([loadFleet(), reloadBookings()]);
+  [fleet, bookings] = await Promise.all([loadFleet({ includeHidden: true }), reloadBookings()]);
   await renderRelease();
   toast('Reloaded from database');
 });
@@ -3896,6 +4361,8 @@ function paintPhotoRows(list) {
     const pCount = Object.keys(b.pickup).length;
     const rCount = Object.keys(b.return).length;
     const dCount = (b.damage || []).length;
+    const v = b.videos || { pickup: [], return: [], damage: [] };
+    const vCount = v.pickup.length + v.return.length + v.damage.length;
     const vehicle = [b.vehicleYear, b.vehicleName].filter(Boolean).join(' ');
     /* data-label drives the mobile card view: without it these cells
        collapse into unlabelled text on a phone. */
@@ -3909,6 +4376,7 @@ function paintPhotoRows(list) {
       <td data-label="Pickup"><span class="ph-badge ${pCount ? 'has' : 'none'}">${pCount}/5</span></td>
       <td data-label="Return"><span class="ph-badge ${rCount ? 'has' : 'none'}">${rCount}/5</span></td>
       <td data-label="Damage"><span class="ph-badge ${dCount ? 'has' : 'none'}">${dCount}</span></td>
+      <td data-label="Video"><span class="ph-badge ${vCount ? 'has' : 'none'}">${vCount}</span></td>
       <td data-label="Agreement">${b.signedContract
         ? `<a class="doc-link" href="/api/contract-file/${Number(b.signedContract.id)}"
               target="_blank" rel="noopener" title="Open the signed agreement">Signed PDF</a>`
@@ -4067,6 +4535,10 @@ $('pmGrid').addEventListener('change', async e => {
     toast(`${ref} — ${money(amount)} confirmed` +
           (res && res.pending > 0 ? `, ${money(res.pending)} still pending`
                                   : ', paid in full'));
+
+    /* Same moment as taking cash: the money is checked, so offer to
+       confirm the slot and open the customer's photo steps. */
+    await offerPaymentConfirmation(ref, 'online');
   } catch (err) {
     box.checked = false;
     box.disabled = false;
@@ -4091,8 +4563,19 @@ function renderModalGrid(b, stage) {
   const grid = $('pmGrid');
   const entries = Object.entries(photos);
 
+  /* The optional clip for this stage, shown under its photos — the
+     office watches it in the same pass as the stills. */
+  const clips = ((b.videos || {})[stage]) || [];
+  const videoBlock = clips.length ? `
+    <div class="pm-videos">
+      <h4>Walkaround video</h4>
+      ${videoStrip(clips, '')}
+    </div>` : '';
+
   if (!entries.length) {
-    grid.innerHTML = '<div class="pm-empty">No ' + stage + ' photos uploaded for this booking.</div>';
+    grid.innerHTML = videoBlock
+      ? '<div class="pm-empty">No ' + stage + ' photos — video only.</div>' + videoBlock
+      : '<div class="pm-empty">No ' + stage + ' photos uploaded for this booking.</div>';
     return;
   }
 
@@ -4101,7 +4584,7 @@ function renderModalGrid(b, stage) {
       <img src="/${esc(path)}" alt="${esc(PHOTO_LABELS[type] || type)}" loading="lazy">
       <span class="pm-badge">${esc(PHOTO_LABELS[type] || type)}</span>
     </div>`
-  ).join('');
+  ).join('') + videoBlock;
 }
 
 window.openFullImage = function(src) {
@@ -4114,9 +4597,512 @@ $('photoFull').addEventListener('click', e => { if (e.target === $('photoFull'))
 $('pmClose').addEventListener('click', () => { $('photoModal').hidden = true; });
 $('pmBackdrop').addEventListener('click', () => { $('photoModal').hidden = true; });
 
+/* =========================== MILES TRACKER =========================
+
+   How far each customer drove, from the odometer photos they upload at
+   pickup and return.
+
+   The readings are produced by OCR on a dashboard photo, which is a
+   harder read than a payment screenshot — glare, angle, a trip meter
+   beside the real odometer. So a scanned figure is shown as a
+   SUGGESTION until the office confirms it, and every reading is
+   editable in place. A confirmed figure is never overwritten by a
+   later scan.
+=================================================================== */
+
+let mileageRows = [];
+
+const milesFmt = n => (n == null ? '—' : Number(n).toLocaleString('en-US'));
+
+async function renderMiles() {
+  const body = $('milesRows');
+  const sum = $('milesSummary');
+  if (!body) return;
+
+  try {
+    mileageRows = await request('/bookings/mileage');
+  } catch (err) {
+    body.innerHTML = `<tr><td colspan="6" class="miles-empty">${esc(err.message)}</td></tr>`;
+    return;
+  }
+
+  if (!mileageRows.length) {
+    sum.innerHTML = '';
+    body.innerHTML = `<tr><td colspan="6" class="miles-empty">
+      No odometer readings yet. They appear here once customers upload
+      their odometer photo at pick-up and return.</td></tr>`;
+    return;
+  }
+
+  /* Totals cover only the bookings where both ends are known — a
+     part-finished rental has no distance yet. */
+  const done = mileageRows.filter(r => r.miles !== null && !r.suspect);
+  const total = done.reduce((a, r) => a + r.miles, 0);
+  const avg = done.length ? Math.round(total / done.length) : 0;
+  const waiting = mileageRows.filter(r => r.miles === null).length;
+  const unconfirmed = mileageRows.filter(r => r.unconfirmed).length;
+
+  sum.innerHTML = `
+    <div class="miles-stat"><b>${esc(milesFmt(total))}</b><span>Total miles driven</span></div>
+    <div class="miles-stat"><b>${esc(milesFmt(avg))}</b><span>Average per rental</span></div>
+    <div class="miles-stat"><b>${done.length}</b><span>Rentals completed</span></div>
+    ${waiting ? `<div class="miles-stat warn"><b>${waiting}</b><span>Awaiting a reading</span></div>` : ''}
+    ${unconfirmed ? `<div class="miles-stat warn"><b>${unconfirmed}</b><span>Unconfirmed scans</span></div>` : ''}`;
+
+  body.innerHTML = mileageRows.map(r => {
+    const cell = (value, source, stage) => `
+      <button type="button" class="odo-cell${source === 'ocr' ? ' is-ocr' : ''}"
+              data-ref="${esc(r.reference)}" data-stage="${stage}"
+              title="${source === 'ocr'
+                ? 'Read from the photo and not yet checked — click to confirm or correct'
+                : 'Click to edit'}">
+        ${esc(milesFmt(value))}${source === 'ocr' ? '<span class="odo-flag">?</span>' : ''}
+      </button>`;
+
+    const miles = r.suspect
+      ? `<span class="miles-bad" title="The return reading is lower than the pick-up reading — one of them was misread">Check readings</span>`
+      : r.miles === null
+        ? `<span class="sub">—</span>`
+        : `<b>${esc(milesFmt(r.miles))}</b>`;
+
+    return `<tr>
+      <td class="col-main" data-label="Ref">${esc(r.reference)}</td>
+      <td data-label="Customer">${esc(r.customer)}</td>
+      <td data-label="Vehicle">${esc(r.vehicle)}</td>
+      <td class="num" data-label="Pick-up">${cell(r.pickup, r.pickupSource, 'pickup')}</td>
+      <td class="num" data-label="Return">${cell(r.return, r.returnSource, 'return')}</td>
+      <td class="num" data-label="Miles driven">${miles}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* Editing a reading in place. Confirming an OCR figure unchanged still
+   marks it checked, which is the point — it stops the "?" flag and
+   protects it from a later re-scan. */
+$('milesRows')?.addEventListener('click', e => {
+  const btn = e.target.closest('.odo-cell');
+  if (!btn) return;
+  const ref = btn.dataset.ref;
+  const stage = btn.dataset.stage;
+  const row = mileageRows.find(r => r.reference === ref);
+  if (!row) return;
+
+  const current = stage === 'pickup' ? row.pickup : row.return;
+  const wasOcr = (stage === 'pickup' ? row.pickupSource : row.returnSource) === 'ocr';
+
+  openSheet(
+    `${stage === 'pickup' ? 'Pick-up' : 'Return'} odometer — ${ref}`,
+    `${row.customer} · ${row.vehicle}` +
+      (wasOcr ? ' · read from the photo, not yet checked' : ''),
+    [{ key: 'odo', label: 'Miles on the clock', type: 'number',
+       value: current == null ? '' : current, placeholder: 'e.g. 45231' }],
+    () => {
+      const raw = $('f_odo').value.trim();
+      if (raw !== '') {
+        const n = Number(raw);
+        if (!isFinite(n) || n < 0 || n > 999999) {
+          return 'Enter a mileage between 0 and 999,999';
+        }
+      }
+      (async () => {
+        try {
+          await request(`/bookings/${encodeURIComponent(ref)}/odometer`, {
+            method: 'POST',
+            body: JSON.stringify({ stage, miles: raw })
+          });
+          await renderMiles();
+          toast(raw === ''
+            ? `${ref} ${stage} reading cleared`
+            : `${ref} ${stage} reading saved`);
+        } catch (err) {
+          toast(err.message, true);
+        }
+      })();
+    },
+    { submitLabel: 'Save reading' }
+  );
+});
+
+/* ========================= RENTAL DOCUMENT =========================
+
+   The agreement's wording, edited here instead of in source. Every save
+   writes a NEW version and never rewrites an old one, because a
+   contract already sent has to keep saying what the customer agreed to.
+   One version per document type is marked "in use" and is what the
+   Actions tab sends unless the office picks another.
+=================================================================== */
+
+const DOC_TYPE = 'rental_agreement';
+let docVersions = [];      /* the list, newest first */
+let docLoadedId = null;    /* which version is in the editor */
+
+const docApi = {
+  list:     () => request(`/document-templates?type=${DOC_TYPE}`),
+  active:   () => request('/document-templates/active?type=' + DOC_TYPE),
+  one:      id => request('/document-templates/' + id),
+  save:     payload => request('/document-templates',
+                { method: 'POST', body: JSON.stringify(payload) }),
+  activate: id => request('/document-templates/' + id + '/activate',
+                { method: 'POST' })
+};
+
+/* One clause in the editor. Kept as plain inputs rather than a rich
+   text box: the PDF draws headings and paragraphs, so that is exactly
+   what the office edits — nothing can be typed here that the document
+   cannot render. */
+function docSectionRow(section = { heading: '', paragraphs: [] }, index = 0) {
+  const paras = (section.paragraphs || []).join('\n\n');
+  return `
+    <div class="doc-section" data-index="${index}">
+      <div class="doc-section-head">
+        <span class="doc-section-n">${index + 1}</span>
+        <input type="text" class="doc-heading" maxlength="200"
+               value="${esc(section.heading || '')}" placeholder="Clause heading">
+        <button type="button" class="doc-section-del" title="Remove this clause"
+                data-remove="${index}">&times;</button>
+      </div>
+      <textarea class="doc-paras" rows="4"
+                placeholder="The clause text. Leave a blank line between paragraphs."
+                >${esc(paras)}</textarea>
+    </div>`;
+}
+
+/* One row of the detail table: up to two label/key pairs.
+
+   The KEY is what the PDF looks up on the booking — it is shown but
+   locked, because changing it would point the row at a field that does
+   not exist and print a blank. The LABEL is free text. No customer
+   value appears here: the template is the blank form. */
+function docFieldRow(row = [null, null], index = 0) {
+  const cell = (c, side) => {
+    const label = c ? (c[0] || '') : '';
+    const key   = c ? (c[1] || '') : '';
+    return `
+      <div class="doc-field-cell">
+        <input type="text" class="doc-flabel" maxlength="60"
+               value="${esc(label)}" placeholder="${side ? 'Right label' : 'Left label'}"
+               ${key ? '' : 'disabled'}>
+        <span class="doc-fkey" title="The booking field this row prints">
+          ${key ? esc(key) : '<i>empty</i>'}
+        </span>
+      </div>`;
+  };
+  return `
+    <div class="doc-field-row" data-index="${index}">
+      ${cell(row[0], 0)}
+      ${cell(row[1], 1)}
+      <button type="button" class="doc-section-del" title="Remove this row"
+              data-remove-field="${index}">&times;</button>
+    </div>`;
+}
+
+function docReadEditor() {
+  const sections = [...document.querySelectorAll('#docSections .doc-section')]
+    .map(el => ({
+      heading: el.querySelector('.doc-heading').value.trim(),
+      /* A blank line separates paragraphs, matching how they are drawn. */
+      paragraphs: el.querySelector('.doc-paras').value
+        .split(/\n{2,}/).map(p => p.trim().replace(/\s*\n\s*/g, ' ')).filter(Boolean)
+    }))
+    .filter(s => s.heading || s.paragraphs.length);
+
+  const detailFields = [...document.querySelectorAll('#docFields .doc-field-row')]
+    .map(el => [...el.querySelectorAll('.doc-field-cell')].map(c => {
+      const key = c.querySelector('.doc-fkey').textContent.trim();
+      if (!key || key === 'empty') return null;
+      return { label: c.querySelector('.doc-flabel').value.trim(), key };
+    }))
+    .filter(row => row.some(Boolean));
+
+  return {
+    company: $('docCompany').value.trim(),
+    tagline: $('docTagline').value.trim(),
+    title: $('docTitle').value.trim(),
+    intro: $('docIntro').value.trim(),
+    detailFields,
+    sections,
+    acknowledgement: $('docAck').value.trim(),
+    footer: $('docFooter').value.trim()
+  };
+}
+
+function docFillEditor(body) {
+  $('docCompany').value = body.company || '';
+  $('docTagline').value = body.tagline || '';
+  $('docTitle').value = body.title || '';
+  $('docIntro').value = body.intro || '';
+  $('docAck').value = body.acknowledgement || '';
+  $('docFooter').value = body.footer || '';
+  $('docFields').innerHTML =
+    (body.detailFields || []).map((r, i) => docFieldRow(r, i)).join('');
+  $('docSections').innerHTML =
+    (body.sections || []).map((s, i) => docSectionRow(s, i)).join('');
+}
+
+/* The booking fields a detail row can print. Offered as a list rather
+   than free text because a typo here prints a blank line on every
+   contract — these are the keys the PDF actually looks up. */
+const DOC_FIELD_KEYS = [
+  ['driverName', 'Driver name'], ['vehicle', 'Vehicle / car no.'],
+  ['pickup', 'Pickup date & time'], ['monthlyRent', 'Monthly rent'],
+  ['periodLabel', 'Rental period'], ['periodAmount', 'Amount for this period'],
+  ['startDate', 'Period start date'], ['endDate', 'Period end date'],
+  ['licence', 'Driving licence no.'], ['phone', 'Phone number'],
+  ['email', 'Email'],
+  ['referralName', 'Referral name'], ['referralPhone', 'Referral phone']
+];
+
+function docRenderVersions() {
+  const host = $('docVersionList');
+  if (!docVersions.length) {
+    host.innerHTML = `
+      <p class="doc-empty">No saved versions yet. The built-in wording is in
+         use; save an edit to create version 1.</p>`;
+    return;
+  }
+  host.innerHTML = docVersions.map(v => `
+    <div class="doc-version${v.isActive ? ' is-active' : ''}${v.id === docLoadedId ? ' is-loaded' : ''}">
+      <div class="doc-version-top">
+        <b>Version ${v.version}</b>
+        ${v.isActive ? '<span class="doc-badge">In use</span>' : ''}
+        ${v.fromUpload ? '<span class="doc-badge upload">Uploaded</span>' : ''}
+      </div>
+      ${v.note ? `<p class="doc-version-note">${esc(v.note)}</p>` : ''}
+      <p class="doc-version-meta">${esc(timeAgo(v.createdAt))}${v.createdBy ? ' · ' + esc(v.createdBy) : ''}</p>
+      <div class="doc-version-actions">
+        <button type="button" class="btn btn-line btn-sm" data-doc-load="${v.id}">Open</button>
+        <button type="button" class="btn btn-line btn-sm" data-doc-preview="${v.id}">PDF</button>
+        ${v.isActive ? '' :
+          `<button type="button" class="btn btn-red btn-sm" data-doc-use="${v.id}">Use this</button>`}
+      </div>
+    </div>`).join('');
+}
+
+async function renderDocument() {
+  try {
+    docVersions = await docApi.list();
+    /* Nothing saved yet: show the built-in wording so the office edits
+       the real document rather than starting from an empty form. */
+    const current = docLoadedId
+      ? await docApi.one(docLoadedId)
+      : await docApi.active();
+    docLoadedId = current.id || null;
+    docFillEditor(current.body);
+    docRenderVersions();
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+
+/* ---- editor controls ---- */
+
+$('docAddSection')?.addEventListener('click', () => {
+  const n = document.querySelectorAll('#docSections .doc-section').length;
+  $('docSections').insertAdjacentHTML('beforeend', docSectionRow({}, n));
+});
+
+/* Adding a detail row asks which booking field it prints, because a
+   row without a valid key renders as a blank line on every contract. */
+$('docAddField')?.addEventListener('click', () => {
+  const used = new Set([...document.querySelectorAll('#docFields .doc-fkey')]
+    .map(e => e.textContent.trim()));
+  const free = DOC_FIELD_KEYS.filter(([k]) => !used.has(k));
+  if (!free.length) return toast('Every available field is already on the table', true);
+
+  /* openSheet has no select type, so the choice is a plain <select>
+     rendered through its `html` field. */
+  openSheet('Add a detail row',
+    'Pick the booking field this row prints. The label is what appears on the document.',
+    [
+      { key: 'fPick', label: 'Booking field', type: 'html', full: true,
+        html: `<select id="f_fKey" class="text-input">${
+          free.map(([k, nice]) =>
+            `<option value="${esc(k)}">${esc(nice)}</option>`).join('')
+        }</select>` },
+      { key: 'fLabel', label: 'Label on the document', value: '' }
+    ],
+    () => {
+      const sel = document.getElementById('f_fKey');
+      const key = sel && sel.value;
+      if (!key) return 'Choose a booking field';
+      const nice = (DOC_FIELD_KEYS.find(([k]) => k === key) || [, key])[1];
+      const label = ($('f_fLabel').value.trim() || nice).toUpperCase();
+      const n = document.querySelectorAll('#docFields .doc-field-row').length;
+      $('docFields').insertAdjacentHTML('beforeend',
+        docFieldRow([[label, key], null], n));
+    });
+});
+
+$('docFields')?.addEventListener('click', e => {
+  const del = e.target.closest('[data-remove-field]');
+  if (!del) return;
+  del.closest('.doc-field-row').remove();
+  [...document.querySelectorAll('#docFields .doc-field-row')].forEach((el, i) => {
+    el.dataset.index = i;
+    el.querySelector('[data-remove-field]').dataset.removeField = i;
+  });
+});
+
+$('docSections')?.addEventListener('click', e => {
+  const del = e.target.closest('[data-remove]');
+  if (!del) return;
+  del.closest('.doc-section').remove();
+  /* renumber so the badges stay in order */
+  [...document.querySelectorAll('#docSections .doc-section')].forEach((el, i) => {
+    el.dataset.index = i;
+    el.querySelector('.doc-section-n').textContent = i + 1;
+    el.querySelector('[data-remove]').dataset.remove = i;
+  });
+});
+
+$('docSaveBtn')?.addEventListener('click', async () => {
+  const body = docReadEditor();
+  if (!body.title) return toast('Give the document a title', true);
+  if (!body.sections.length) return toast('The document needs at least one clause', true);
+
+  const btn = $('docSaveBtn');
+  btn.disabled = true;
+  try {
+    const saved = await docApi.save({
+      documentType: DOC_TYPE,
+      body,
+      note: $('docNote').value.trim(),
+      activate: true
+    });
+    $('docNote').value = '';
+    docLoadedId = saved.id;
+    await renderDocument();
+    toast(`Saved as version ${saved.version} — this is now the version sent`);
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+/* Replacing the whole document from a file.
+
+   Any format the agreement might arrive in: PDF, Word (.docx), RTF,
+   HTML, plain text, or the JSON this editor exports. Word and PDF are
+   unpacked on the server — a browser cannot unzip a .docx or decode a
+   PDF content stream without a large library on every admin's machine.
+
+   What comes back lands in the EDITOR, not in a saved version. Reading
+   someone else's formatting is a best guess: headings have to be
+   inferred, and a two-column or scanned layout will not survive it. The
+   office reviews what was found and presses Save. */
+$('docUploadBtn')?.addEventListener('click', () => $('docUploadInput').click());
+
+$('docUploadInput')?.addEventListener('change', async e => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  e.target.value = '';
+  if (file.size > 15e6) return toast('That file is too large (15MB maximum)', true);
+
+  const btn = $('docUploadBtn');
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Reading…'; }
+
+  try {
+    /* The editor's own JSON is handled here rather than sent to the
+       server: it is already in the right shape. */
+    if (/.json$/i.test(file.name)) {
+      const body = JSON.parse(await file.text());
+      if (!body || !Array.isArray(body.sections)) {
+        throw new Error('That JSON is not a document — it needs a sections list');
+      }
+      docFillEditor({
+        company: body.company || $('docCompany').value,
+        tagline: body.tagline || $('docTagline').value,
+        title: body.title || '',
+        intro: body.intro || '',
+        detailFields: body.detailFields || [],
+        sections: body.sections || [],
+        acknowledgement: body.acknowledgement || '',
+        footer: body.footer || $('docFooter').value
+      });
+      $('docNote').value = 'Replaced from ' + file.name;
+      toast('File loaded into the editor — press "Save as new version" to keep it');
+      return;
+    }
+
+    const data = await new Promise((ok, no) => {
+      const fr = new FileReader();
+      fr.onload = () => ok(String(fr.result).split(',')[1] || '');
+      fr.onerror = () => no(new Error('That file could not be read'));
+      fr.readAsDataURL(file);
+    });
+
+    const out = await request('/document-templates/extract', {
+      method: 'POST',
+      body: JSON.stringify({ file: { name: file.name, type: file.type, data } })
+    });
+
+    docFillEditor(out.body);
+    $('docNote').value = 'Replaced from ' + file.name;
+
+    if (!out.sections) {
+      toast('Text was read from that ' + out.format + ', but no clauses could be '
+          + 'identified — check the editor before saving', true);
+    } else {
+      toast(out.format + ' read — ' + out.sections + ' clause'
+          + (out.sections === 1 ? '' : 's')
+          + ' found. Review them, then press "Save as new version".');
+    }
+  } catch (err) {
+    toast(err.message || 'That file could not be read', true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+  }
+});
+
+$('docPreviewBtn')?.addEventListener('click', async () => {
+  /* Preview what is in the EDITOR, which may be unsaved — so it is
+     saved as a draft version first. Marked inactive so an unreviewed
+     draft is never what goes to a customer. */
+  const body = docReadEditor();
+  if (!body.sections.length) return toast('Nothing to preview yet', true);
+  try {
+    const draft = await docApi.save({
+      documentType: DOC_TYPE, body,
+      note: 'Preview draft', activate: false
+    });
+    window.open('/api/document-templates/' + draft.id + '/preview', '_blank');
+    await renderDocument();
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+
+$('docVersionList')?.addEventListener('click', async e => {
+  const load = e.target.closest('[data-doc-load]');
+  const prev = e.target.closest('[data-doc-preview]');
+  const use  = e.target.closest('[data-doc-use]');
+
+  if (prev) {
+    window.open('/api/document-templates/' + prev.dataset.docPreview + '/preview', '_blank');
+    return;
+  }
+  if (load) {
+    docLoadedId = Number(load.dataset.docLoad);
+    await renderDocument();
+    toast('Version opened in the editor');
+    return;
+  }
+  if (use) {
+    try {
+      const r = await docApi.activate(use.dataset.docUse);
+      await renderDocument();
+      toast(`Version ${r.version} is now the one sent to customers`);
+    } catch (err) {
+      toast(err.message, true);
+    }
+  }
+});
+
 /* Everything comes from MySQL, so nothing renders until it arrives. */
 (async () => {
-  [fleet, bookings] = await Promise.all([loadFleet(), reloadBookings()]);
+  [fleet, bookings] = await Promise.all([loadFleet({ includeHidden: true }), reloadBookings()]);
   renderFleet();
   renderBookings();
   renderOverview();

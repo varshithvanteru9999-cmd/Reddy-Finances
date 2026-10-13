@@ -32,7 +32,7 @@
   --vid-crop: 0%;                      /* see .hero-media video below */
   --wm-size: 30% 26%;                  /* watermark cover, see .hero-media::after */
   --ring: clamp(130px, 13.5vw, 250px); /* custom cursor ring, hero only */
-  --header-h: 92px;
+  --header-h: 72px;
 
   /* neumorphic (soft-UI) palette — the card styling carried over from the
      venuvallepu.in reference: a pale grey face, a dark shadow and a white
@@ -246,6 +246,13 @@ h1 em, h2 em, h3 em, .hero-word em { font-style: normal; color: var(--red); }
 .btn-ghost-light { border: 1px solid rgba(255,255,255,.45); color: #fff; }
 .btn-ghost-light:hover { color: var(--red); }
 
+/* The same quiet outline for light backgrounds. bookings.html and
+   profile.html both asked for .btn-ghost and only .btn-ghost-light
+   existed, so "Browse Inventory" and "Cancel" rendered as bare,
+   borderless text that did not read as a button at all. */
+.btn-ghost { border: 1px solid var(--border-color, rgba(0,0,0,.18)); color: var(--text-primary); }
+.btn-ghost:hover { border-color: var(--red); color: var(--red); }
+
 .btn-block { display: flex; width: 100%; }
 
 /* label, a generous gap, then a red rule beneath — as the reference */
@@ -449,6 +456,12 @@ h1 em, h2 em, h3 em, .hero-word em { font-style: normal; color: var(--red); }
   align-items: center;
   gap: 20px;
   width: 100%;
+  /* The brand is absolutely positioned against this box, so it has to
+     be the full height of the bar. It was only as tall as the menu
+     button (44px) and sat below the bar's top edge, so centring the
+     brand inside it still left the stack hanging low — which is what
+     the deep black band was accommodating. */
+  height: 100%;
 }
 .menu-toggle { margin-right: auto; }
 .header-right { margin-left: auto; }
@@ -464,7 +477,9 @@ h1 em, h2 em, h3 em, .hero-word em { font-style: normal; color: var(--red); }
   text-transform: uppercase;
 }
 .menu-toggle .bars {
-  width: 48px; height: 48px;
+  /* Sized against the shorter bar: a 48px box in a 72px band leaves
+     almost no breathing room above and below it. */
+  width: 40px; height: 40px;
   border: 1px solid var(--red);
   display: grid;
   place-content: center;
@@ -480,7 +495,11 @@ h1 em, h2 em, h3 em, .hero-word em { font-style: normal; color: var(--red); }
 .brand {
   position: absolute;
   left: 50%;
-  transform: translateX(-50%);
+  /* Centred on BOTH axes. It carried no vertical anchor, so the stack
+     hung from the top of the bar and its lower half spilled past the
+     bottom edge — which is what the band had grown tall to cover. */
+  top: 50%;
+  transform: translate(-50%, -50%);
   text-align: center;
   color: #fff;
   line-height: 1;
@@ -488,11 +507,18 @@ h1 em, h2 em, h3 em, .hero-word em { font-style: normal; color: var(--red); }
 /* these are spans, so they need display:block or width is ignored */
 /* The car mark is a 2.75:1 bitmap, so the box follows that ratio —
    a square-ish box would letterbox it. */
-.brand .swoosh { display: block; width: 104px; height: 38px; margin: 0 auto 4px; }
+/* The stack is kept SHORTER than --header-h on purpose.
+
+   The three pieces used to total about 82px inside a 92px bar and
+   overflowed it, so the black band grew to swallow the difference and
+   the brand sat in a deep letterbox. Trimming the mark, the wordmark
+   and the gaps brings the stack inside the bar, and the band closes up
+   to match without anything being moved or removed. */
+.brand .swoosh { display: block; width: 84px; height: 29px; margin: 0 auto 2px; }
 .brand .swoosh svg,
 .brand .swoosh img { display: block; width: 100%; height: 100%; object-fit: contain; }
-.brand .name { display: block; font-family: 'Playfair Display', Georgia, serif; font-style: italic; font-size: 26px; font-weight: 500; letter-spacing: .01em; }
-.brand .sub { display: block; font-size: 9.5px; letter-spacing: .2em; text-transform: lowercase; color: var(--on-dark-2); margin-top: 4px; }
+.brand .name { display: block; font-family: 'Playfair Display', Georgia, serif; font-style: italic; font-size: 21px; font-weight: 500; letter-spacing: .01em; }
+.brand .sub { display: block; font-size: 8.5px; letter-spacing: .2em; text-transform: lowercase; color: var(--on-dark-2); margin-top: 2px; }
 
 .header-right { display: flex; align-items: center; gap: 12px; }
 
@@ -643,12 +669,24 @@ h1 em, h2 em, h3 em, .hero-word em { font-style: normal; color: var(--red); }
   left: calc(var(--vid-crop) * -1);
   right: auto;
 
-  /* The source is 848x478 and gets scaled up well past its own size, so
-     the browser's default smoothing leaves it soft. A light contrast and
-     saturation lift plus a touch of scaling sharpness recovers most of
-     the apparent detail without touching the file. */
-  image-rendering: -webkit-optimize-contrast;
-  filter: contrast(1.06) saturate(1.08) brightness(1.02);
+  /* The source is 848x478 — below 720p — and the hero stretches it to
+     the full viewport, so it is upscaled around 1.6x on a laptop and
+     more on a large screen. Nothing in CSS can put back detail the file
+     never recorded; the aim here is only to keep the stretch as clean
+     as possible.
+
+     This previously carried image-rendering: -webkit-optimize-contrast,
+     which was doing nothing: the property applies to images and canvas,
+     and browsers ignore it on a <video>. Measured before and after on a
+     decoded frame, local detail and blocking were identical to within
+     0.5%. It is dropped rather than kept, so the next person does not
+     read it as a working sharpness control and build on it.
+
+     The grade stays: a small contrast and saturation lift reads as
+     crispness without touching the pixels. Saturation does more good
+     here than contrast, which at higher values crushes the shadows
+     this clip is full of. */
+  filter: contrast(1.04) saturate(1.1) brightness(1.02);
   transform: translateZ(0);          /* keep it on the GPU layer */
   backface-visibility: hidden;
 }
@@ -985,6 +1023,21 @@ h1 em, h2 em, h3 em, .hero-word em { font-style: normal; color: var(--red); }
   margin-bottom: 24px;
 }
 .filters { display: inline-flex; gap: 10px; }
+
+/* Shown only when the fleet on screen came from the last saved copy
+   rather than a live response. Deliberately plain: it is a status line,
+   not an offer. */
+.fleet-stale {
+  margin: 0 0 20px;
+  padding: 10px 14px;
+  border: 1px solid rgba(226, 160, 63, .35);
+  border-radius: 8px;
+  background: rgba(226, 160, 63, .09);
+  color: var(--warn, #E2A03F);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.fleet-stale[hidden] { display: none; }
 /* pills with a neutral shadow, so they read as raised on the white band */
 .filter-btn {
   padding: 12px 30px;
@@ -1398,6 +1451,20 @@ h1 em, h2 em, h3 em, .hero-word em { font-style: normal; color: var(--red); }
 .field label { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; color: var(--on-dark-3); margin-bottom: 12px; }
 .field-box { position: relative; display: flex; align-items: center; gap: 12px; padding: 0 0 14px; border-bottom: 1px solid var(--dark-line); transition: border-color .28s var(--ease); }
 .field-box:hover, .field-box:focus-within { border-bottom-color: var(--red); }
+
+/* A field that states a fact rather than taking input — the single
+   pick-up location. Matches the other fields so the row stays even,
+   but without the hover or the chevron that invite a click. */
+.field-box.static-field { cursor: default; }
+.field-box.static-field:hover { border-bottom-color: var(--dark-line); }
+.field-box.static-field > span:not(.chev) {
+  flex: 1;
+  min-width: 0;
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  padding-bottom: 0;
+}
 .field-box > svg { width: 16px; height: 16px; flex: none; color: var(--red); }
 .field-box input, .field-box select {
   flex: 1;
@@ -1995,7 +2062,10 @@ h1 em, h2 em, h3 em, .hero-word em { font-style: normal; color: var(--red); }
 
 /* very small phones (iPhone SE / old Androids) */
 @media (max-width: 380px) {
-  :root { --header-h: 74px; }
+  /* Below the 72px default, not above it: this override predates the
+     bar being shortened and was leaving the smallest screens with the
+     tallest header. */
+  :root { --header-h: 64px; }
   .hs-head { font-size: 22px; letter-spacing: .04em; }
   .hero-foot .btn { padding: 8px 22px; min-height: 50px; font-size: 12px; }
   .btn, .filter-btn { padding-inline: 18px; }
@@ -2426,6 +2496,63 @@ h1 em, h2 em, h3 em, .hero-word em { font-style: normal; color: var(--red); }
 /* A pre-booked slot is paid for, so the form asks for proof before it
    will submit. The customer-facing half of the same flow the office
    sees in the Release tab. */
+/* The upload control on the car page.
+
+   It was styled only inside bookings.html, which car.html does not
+   load — so here it rendered as bare text with a stray "+" in front of
+   it. Defined properly, and as a button: it opens a file picker, which
+   is an action, and a dashed drop-zone invites a drag that a phone
+   cannot do. */
+.pay-drop {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 13px 18px;
+  border: 1px solid var(--red, #DF0000);
+  border-radius: 10px;
+  background: var(--red, #DF0000);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background .2s var(--ease), border-color .2s var(--ease),
+              color .2s var(--ease);
+}
+.pay-drop:hover { background: #c40000; border-color: #c40000; }
+.pay-drop.busy { opacity: .55; pointer-events: none; }
+
+/* The "+" belongs to the drop-zone layout and only crowds a button.
+   The format hint moves out of the button entirely — it is guidance
+   about the file, not part of the action — leaving the label centred
+   on its own line instead of fighting the hint for width. */
+.pay-drop .pay-plus { display: none; }
+.pay-drop .pay-text { display: block; text-align: center; }
+.pay-drop .pay-text b { font: inherit; }
+.pay-drop .pay-text small { display: none; }
+
+/* The hint, set under the button where it reads as a caption. */
+.pay-gate .pay-hint {
+  display: block;
+  margin-top: 7px;
+  font-size: 11px;
+  text-align: center;
+  color: var(--muted, #6b7280);
+}
+
+/* Once a file is chosen the button steps back — the action is done,
+   and the filename is the thing to read. */
+.pay-gate .pay-drop.filled,
+.pay-drop.filled {
+  background: transparent;
+  border-color: #0f7a4a;
+  color: #0f7a4a;
+}
+
 .pay-gate {
   margin: 0 0 14px;
   padding: 14px;
@@ -2439,15 +2566,9 @@ h1 em, h2 em, h3 em, .hero-word em { font-style: normal; color: var(--red); }
   font-size: 12px; line-height: 1.5;
   color: var(--muted, #6b7280);
 }
-.pay-gate .pay-drop.filled {
-  border-style: solid;
-  border-color: #16a34a;
-  background: rgba(22, 163, 74, .06);
-}
-.pay-gate .pay-drop.filled .pay-plus {
-  background: rgba(22, 163, 74, .12);
-  color: #16a34a;
-}
+  /* The filled state is defined once with the button styles above.
+     These rules re-styled it as a drop-zone and won on order, undoing
+     that; the plus is hidden in a button, so its rule goes too. */
 /* A disabled Confirm must look disabled, or it reads as a broken page. */
 .book-form button[type="submit"]:disabled {
   opacity: .5;
@@ -2937,7 +3058,25 @@ h1 em, h2 em, h3 em, .hero-word em { font-style: normal; color: var(--red); }
   color: var(--text-muted, #6a6a70);
   margin: 0 0 18px;
 }
+.dep-lead { margin-bottom: 10px; }
 .dep-lead strong { color: var(--text-primary); }
+
+/* Where to send the money. Set apart from the explanation above it
+   because it is the one line the customer has to act on, and an
+   address buried in a paragraph is an address that gets mistyped. */
+.dep-pay {
+  margin: 0 0 18px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color, rgba(0,0,0,.12));
+  border-left: 3px solid var(--red, #DF0000);
+  border-radius: 8px;
+  background: rgba(223, 0, 0, .04);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+.dep-pay strong { font-weight: 700; }
 
 .dep-drop {
   display: flex;
@@ -3245,4 +3384,215 @@ h1 em, h2 em, h3 em, .hero-word em { font-style: normal; color: var(--red); }
   .dep-actions .btn,
   .notice-row .btn { min-height: 48px; }
   .notice-date { min-height: 48px; }
+}
+
+/* ------------------------- install the app -------------------------
+   The site is a progressive web app, so the browser does the
+   installing; these styles are for the button that asks for it and
+   the panel that explains it where no prompt exists (iOS Safari). */
+
+/* The icon sits in the brand bar's contact row and matches it, with a
+   red tint so it reads as an offer rather than another contact link. */
+.install-btn { color: var(--red); }
+.install-btn svg { width: 17px; height: 17px; position: relative; z-index: 1; }
+
+/* The menu entry carries its icon inline, unlike the text-only links
+   beside it, so it needs the row layout the shared rule does not give. */
+.menu-panel .menu-install {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.menu-panel .menu-install svg { width: 20px; height: 20px; }
+
+.install-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 420;         /* above the contract modal's 400 */
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(10, 12, 16, .62);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+.install-modal.open { display: flex; }
+
+.install-card {
+  position: relative;
+  width: min(440px, 100%);
+  max-height: min(86vh, 700px);
+  overflow-y: auto;
+  padding: 28px 26px 24px;
+  background: var(--bg-card, #fff);
+  border-radius: 16px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .4);
+}
+.install-card h3 {
+  margin: 0 0 14px;
+  padding-right: 34px;   /* clear of the close button */
+  font-family: var(--display);
+  font-size: 19px;
+  font-weight: 700;
+}
+.install-card p { margin: 0 0 12px; font-size: 14px; line-height: 1.6; }
+.install-card ol {
+  margin: 0 0 14px;
+  padding-left: 20px;
+  font-size: 14px;
+  line-height: 1.75;
+}
+.install-card li { margin-bottom: 6px; }
+.install-card strong { font-weight: 650; }
+
+/* The caveat — which browser is required, or that nothing is lost by
+   staying in the browser — is support, not instruction. */
+.install-card .install-note {
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+  font-size: 12.5px;
+  line-height: 1.55;
+  opacity: .72;
+}
+
+.install-close {
+  position: absolute;
+  top: 16px; right: 16px;
+  width: 32px; height: 32px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  border-radius: 50%;
+  color: inherit;
+  cursor: pointer;
+  opacity: .6;
+}
+.install-close:hover { opacity: 1; color: var(--red); }
+.install-close svg { width: 17px; height: 17px; }
+
+/* Touch targets below the 44px minimum are hard to hit on a phone,
+   which is where this panel is most likely to be read. */
+@media (max-width: 640px) {
+  .install-card { padding: 24px 20px 20px; }
+  .install-close { width: 44px; height: 44px; top: 10px; right: 10px; }
+}
+
+/* The footer's install button.
+
+   It takes .btn .btn-outline so it carries the site's button shape,
+   outline and press animation, then overrides the size: the full .btn
+   is 58px tall with 46px of side padding, built for a hero call to
+   action, and at that size it dwarfs the contact details it sits
+   under. These are the footer's proportions, not a new button style. */
+.footer-col .footer-install {
+  margin-top: 18px;
+  gap: 9px;
+  min-height: 40px;
+  padding: 8px 20px;
+  font-size: 11px;
+  letter-spacing: .12em;
+  /* The column is narrow; without this the button stretches to the
+     full grid cell and reads as a banner rather than a control. */
+  width: auto;
+}
+.footer-col .footer-install svg { width: 14px; height: 14px; }
+
+/* The footer sits on a light panel, so the outline follows the body
+   text rather than the pure black .btn-outline assumes. */
+.footer-col .footer-install {
+  border: 1px solid var(--border-color, rgba(16, 20, 26, .22));
+  color: inherit;
+}
+.footer-col .footer-install:hover { color: var(--red); border-color: var(--red); }
+
+@media (max-width: 900px) {
+  /* Stacked columns: the button no longer has a column edge to align
+     to, so it keeps its own width and sits with the text above it. */
+  .footer-col .footer-install { margin-top: 14px; }
+}
+
+/* The confirmation after a viewing request runs to a few lines — a
+   heading, what happens next, and the number to call — so it needs
+   the line height a single sentence did not. */
+.book-msg { line-height: 1.6; }
+.book-msg strong { display: inline-block; margin-bottom: 4px; font-weight: 650; }
+.book-msg a { color: var(--red); font-weight: 600; text-decoration: underline; }
+
+/* The number sits slightly apart from the confirmation above it: it is
+   an alternative route, not the next sentence. */
+.book-msg-call {
+  display: block;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(42, 157, 92, .25);
+}
+
+/* On a phone the number is tapped, not read, so give it a target
+   taller than the text itself. */
+@media (max-width: 640px) {
+  .book-msg-call a { display: inline-block; padding: 4px 0; }
+}
+
+/* --------------- viewing request: the sent confirmation ------------
+   Reuses the deposit dialog's backdrop, card, title and close button.
+   Only what is particular to this dialog is set here. */
+
+/* Centred, because this dialog is an acknowledgement rather than a
+   form: there is nothing to fill in, so nothing to align left to. */
+.vr-modal { text-align: center; }
+.vr-modal .dep-title { margin-bottom: 10px; }
+.vr-modal .dep-lead { margin-bottom: 16px; }
+
+/* The tick does the work of the first sentence: the request went
+   through. Green rather than brand red, which on this site marks
+   something that needs attention. */
+.vr-tick {
+  width: 54px;
+  height: 54px;
+  margin: 2px auto 16px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(42, 157, 92, .12);
+  color: #2A9D5C;
+}
+.vr-tick svg { width: 27px; height: 27px; }
+
+/* The number is the one thing the customer may act on, so it is set
+   apart from the confirmation above it rather than reading as its
+   closing clause. */
+.vr-call {
+  margin: 0;
+  padding: 13px 14px;
+  border-radius: 10px;
+  /* --bg-secondary, not a hard-coded grey: this panel has to darken
+     with the rest of the dialog in dark mode. */
+  background: var(--bg-secondary);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.vr-call a {
+  display: inline-block;
+  margin-top: 2px;
+  color: var(--red);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: .01em;
+  text-decoration: none;
+  white-space: nowrap;   /* a phone number must never wrap mid-number */
+}
+.vr-call a:hover { text-decoration: underline; }
+
+/* One button, so it fills the row rather than sitting half-width as
+   the deposit dialog's cancel/confirm pair does. */
+.vr-actions { margin-top: 20px; }
+.vr-actions .btn { width: 100%; }
+
+@media (max-width: 640px) {
+  /* The number is tapped on a phone — give it a target of its own. */
+  .vr-call a { padding: 6px 0; font-size: 17px; }
+  .vr-actions .btn { min-height: 48px; }
 }

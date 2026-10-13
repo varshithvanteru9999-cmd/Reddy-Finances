@@ -7,7 +7,7 @@
    from the server — a stale booking list would be worse than an error.
 ------------------------------------------------------------------- */
 
-const CACHE = 'reddy-v16';
+const CACHE = 'reddy-v24';
 
 /* bookings.html and profile.html are deliberately NOT here: both show
    one signed-in customer's own data, so a cached copy can outlive a
@@ -67,6 +67,21 @@ self.addEventListener('fetch', event => {
       url.pathname.startsWith('/admin') ||
       /\/admin[^/]*\.(js|css)$/.test(url.pathname) ||
       /^\/(bookings|profile)\.html$/.test(url.pathname)) {
+    return;
+  }
+
+  /* Video goes straight to the network, never through here.
+     A <video> asks for byte ranges, and the server answers 206. Caching
+     cannot help with that: a stored 200 replayed against a Range request
+     hands the browser a whole file where it asked for a slice, which
+     Safari and iOS refuse to play. And the offline fallback below would
+     answer a failed range request with index.html — HTML arriving where
+     the decoder expects video, which kills the element for good. The
+     clips are ~10MB each; they have no business in the offline shell. */
+  if (request.destination === 'video' ||
+      request.destination === 'audio' ||
+      request.headers.has('range') ||
+      /\.(mp4|webm|ogg|ogv|mov|m4v)$/i.test(url.pathname)) {
     return;
   }
 

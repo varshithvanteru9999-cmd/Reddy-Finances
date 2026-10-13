@@ -54,6 +54,35 @@ function inclusiveDays(from, to) {
   return Math.round((asDate(to) - asDate(from)) / 86400000) + 1;
 }
 
+/* Is this date one the customer is charged for? The 31st is not. */
+function isBillableDay(d) {
+  return d.getDate() <= BILL_DAY_CAP;
+}
+
+/* The return date that gives the customer `days` BILLABLE days from a
+   given pick-up.
+
+   Counting a flat 29 days forward is wrong whenever a 31st falls in
+   the span: that day is skipped by the billing rule, so the customer
+   paid a full month's rent and received 29 charged days instead of 30.
+   Across a year roughly four bookings in ten span a 31st, so this was
+   not an edge case.
+
+   Walking the calendar and counting only billable days costs nothing
+   at this size and cannot drift from the rule above, which is the
+   point of keeping it in this file. */
+function returnDateFor(startsOn, days = BILL_DAY_CAP) {
+  const d = asDate(startsOn);
+  let counted = isBillableDay(d) ? 1 : 0;
+  /* A bounded walk: even a 30-day term spanning several 31sts settles
+     well inside this, and it can never spin. */
+  for (let guard = 0; counted < days && guard < 400; guard++) {
+    d.setDate(d.getDate() + 1);
+    if (isBillableDay(d)) counted++;
+  }
+  return iso(d);
+}
+
 /* ------------------------------------------------------------------
    Splits a rental into calendar months and prices each one.
    Returns { lines, subtotal, days } — lines carry their own arithmetic
@@ -79,6 +108,20 @@ function monthlyBreakdown(startsOn, endsOn, monthlyRate) {
     const segmentEnd = end < lastBillable ? end : lastBillable;
 
     const used = inclusiveDays(cursor, segmentEnd);
+
+    /* A pick-up ON the 31st has no billable day left in that month, so
+       the segment runs from the 31st back to the 30th: zero days, and
+       a date range that reads backwards. It was still pushed as a line,
+       and the quote showed "October 2026 · 0 of 30 days · $0.00" over
+       "2026-10-31 → 2026-10-30".
+
+       Nothing is owed for it — that is the rule — but an empty line
+       priced at nothing does not belong on a customer's quote or an
+       invoice, so the month is skipped and billing starts on the 1st. */
+    if (used <= 0) {
+      cursor = new Date(y, m + 1, 1, 12, 0, 0);
+      continue;
+    }
     const monthLength = daysInMonth(y, m);
     const billableLength = billableMonthEnd(y, m);
 
@@ -246,6 +289,7 @@ function overlaps(a, b) {
 /* Browser gets globals; the server gets module.exports. */
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { quote, monthlyBreakdown, noticeCheck, daysUntil, overlaps,
-                     inclusiveDays, round2, meetsMinimumTerm,
-                     NOTICE_DAYS, MAX_LEAD_DAYS, DIVISOR, MIN_TERM_DAYS };
+                     inclusiveDays, round2, meetsMinimumTerm, returnDateFor,
+                     NOTICE_DAYS, MAX_LEAD_DAYS, DIVISOR, MIN_TERM_DAYS,
+                     BILL_DAY_CAP };
 }

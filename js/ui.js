@@ -29,8 +29,29 @@ function initAllRubbers() {
   initRubber('.btn, .sq-btn, .filter-btn, .car-go, .fav, .menu-toggle, .brand-nav > a, .brand-nav .nav-drop-btn, .brand-nav .nav-action');
 }
 
+/* One money format for the whole customer site.
+
+   There were two: this one, and a second in car.js that always showed
+   two decimals. car.js loads last, so on the car page it silently
+   replaced this one and the same figure appeared as "$2,400" in the
+   fleet grid and "$2,400.00" in the quote beside it.
+
+   Cents are shown only when there are cents. A monthly rate of $500
+   reads as "$500", while $586.67 keeps its precision — padding whole
+   figures with ".00" makes a price list noisier without adding
+   anything.
+
+   Non-numbers are coerced rather than trusted: this used to call
+   n.toLocaleString() directly, which THROWS on null or undefined, and
+   a sale listing legitimately has a null total. One such value blanked
+   whatever was rendering at the time. */
 function money(n) {
-  return '$' + n.toLocaleString('en-US');
+  const v = Number(n);
+  if (!isFinite(v)) return '$0';
+  return '$' + v.toLocaleString('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2
+  });
 }
 
 /* Rentals are advertised by the month. The day figure only exists so a
@@ -71,6 +92,7 @@ const ICON = {
   chev:      `<svg viewBox="0 0 24 24" ${S}><path d="m6 9 6 6 6-6"/></svg>`,
   chevDown:  `<svg viewBox="0 0 24 24" ${S}><path d="m6 9 6 6 6-6"/></svg>`,
   close:     `<svg viewBox="0 0 24 24" ${S}><path d="M18 6 6 18M6 6l12 12"/></svg>`,
+  install:   `<svg viewBox="0 0 24 24" ${S}><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></svg>`,
   heart:     `<svg viewBox="0 0 24 24" ${S}><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l8.8 8.8 8.8-8.8a5.5 5.5 0 0 0 0-7.8z"/></svg>`,
   phone:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>`,
   mail:      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`,
@@ -219,6 +241,18 @@ function footerHTML() {
       <ul>${items.map(([l, h]) => `<li><a href="${h}">${l}</a></li>`).join('')}</ul>
     </div>`;
 
+  /* Install closes the Contact column, under the address and hours.
+     It reads as a real button rather than another link because it is
+     an action, not a destination — there is no URL to install, the
+     browser does it. Painted only when the app is not already
+     installed, and removed by the appinstalled handler along with the
+     other install controls. */
+  const installItem = isInstalled() ? '' : `
+    <button type="button" class="btn btn-outline footer-install" data-install-btn
+            aria-label="Install the Reddy Finances app">
+      ${ICON.install}<span>Install the app</span>
+    </button>`;
+
   return `
     <div class="shell">
       <div class="footer-grid">
@@ -240,6 +274,7 @@ function footerHTML() {
             <li><a href="mailto:${EMAIL}">${EMAIL}</a></li>
             <li>Mon &ndash; Sun: 9:00 AM &ndash; 6:00 PM</li>
           </ul>
+          ${installItem}
         </div>
       </div>
 <div class="footer-bottom">
@@ -302,6 +337,16 @@ function initMenu() {
       e.preventDefault();
       setOpen(false);
       openContractModal();
+    });
+  });
+
+  /* Install, same idea: the fullscreen menu is the only chrome on a
+     narrow screen, where the brand bar's icon row is hidden. */
+  panel.querySelectorAll('[data-nav-action="install"]').forEach(b => {
+    b.addEventListener('click', e => {
+      e.preventDefault();
+      setOpen(false);
+      runInstall();
     });
   });
 
@@ -534,6 +579,199 @@ function closeContractModal() {
   document.body.style.overflow = '';
 }
 
+/* ------------------------- install the app -------------------------
+
+   The site is already a progressive web app: manifest.json is linked
+   on every page and sw.js is registered, so a browser will install it
+   to the home screen. Nothing ever told the customer that, so this
+   adds the button.
+
+   There is no installable .apk or .ipa to hand out — the app is the
+   website, installed by the browser. That shapes everything below:
+
+   - Chrome, Edge and Android fire `beforeinstallprompt`, which hands
+     over a prompt we may show once. That is the real install.
+   - iOS Safari has no such event. Installing is Share → Add to Home
+     Screen, which only the customer can do, so there we explain it.
+   - An app already installed must not offer to install again, so the
+     button is hidden when running standalone.
+
+   The event fires before this module runs on a fast load, so the
+   handler is registered at the top of the file rather than inside
+   initChrome, and the captured prompt is kept for whenever the
+   button is painted. */
+
+let installPrompt = null;
+
+/* True when the page is already running as an installed app. */
+function isInstalled() {
+  return window.matchMedia('(display-mode: standalone)').matches ||
+         window.matchMedia('(display-mode: minimal-ui)').matches ||
+         /* iOS marks an installed web app this way instead. */
+         window.navigator.standalone === true;
+}
+
+const isIOS = () =>
+  /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+  /* iPadOS reports itself as a Mac; the touch points give it away. */
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+window.addEventListener('beforeinstallprompt', e => {
+  /* Chrome shows its own mini-infobar unless this is prevented, and
+     once prevented the prompt is ours to trigger from the button. */
+  e.preventDefault();
+  installPrompt = e;
+  paintInstallButton();
+});
+
+window.addEventListener('appinstalled', () => {
+  installPrompt = null;
+  /* Drop the button rather than leave it offering what just happened. */
+  document.querySelectorAll('[data-install-btn]').forEach(b => b.remove());
+  if (window.toast) toast('Reddy Finances is installed. Open it from your home screen.');
+});
+
+/* Shown only where the browser cannot install on its own. The steps
+   differ per browser, so each gets its own, and anything unrecognised
+   gets the generic menu wording rather than confident instructions
+   for a menu it may not have. */
+function installHelpHTML() {
+  if (isIOS()) {
+    return `
+      <p>On iPhone and iPad, Safari installs the app from the Share menu:</p>
+      <ol>
+        <li>Tap the <strong>Share</strong> button at the bottom of Safari
+            (a square with an arrow pointing up).</li>
+        <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
+        <li>Tap <strong>Add</strong>.</li>
+      </ol>
+      <p class="install-note">Safari is the only browser on iPhone that can
+         install an app. If you are using Chrome here, open this page in
+         Safari first.</p>`;
+  }
+  return `
+    <p>Your browser can add this app to your device from its own menu:</p>
+    <ol>
+      <li>Open the browser menu (<strong>⋮</strong> or <strong>☰</strong>).</li>
+      <li>Choose <strong>Install app</strong>, or <strong>Add to Home
+          screen</strong>.</li>
+    </ol>
+    <p class="install-note">If neither appears, the app can still be used in
+       the browser — nothing is missing, it simply will not have its own
+       icon.</p>`;
+}
+
+function openInstallHelp() {
+  let modal = document.getElementById('installModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'installModal';
+    modal.className = 'install-modal';
+    modal.innerHTML = `
+      <div class="install-card" role="dialog" aria-modal="true"
+           aria-labelledby="installTitle">
+        <button type="button" class="install-close" aria-label="Close">
+          ${ICON.close}
+        </button>
+        <h3 id="installTitle">Install Reddy Finances</h3>
+        ${installHelpHTML()}
+      </div>`;
+    document.body.appendChild(modal);
+
+    const shut = () => {
+      modal.classList.remove('open');
+      document.body.style.overflow = '';
+    };
+    modal.querySelector('.install-close').addEventListener('click', shut);
+    /* A tap on the backdrop closes; a tap inside the card must not. */
+    modal.addEventListener('click', e => { if (e.target === modal) shut(); });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && modal.classList.contains('open')) shut();
+    });
+  }
+  modal.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  modal.querySelector('.install-close').focus();
+}
+
+async function runInstall() {
+  /* No captured prompt means this browser never offered one, so the
+     only honest thing to do is explain how its menu does it. */
+  if (!installPrompt) return openInstallHelp();
+
+  const prompt = installPrompt;
+  /* A prompt can only be used once. Clearing it first means a second
+     tap cannot replay a spent prompt and silently do nothing. */
+  installPrompt = null;
+  try {
+    await prompt.prompt();
+    const { outcome } = await prompt.userChoice;
+    if (outcome !== 'accepted') {
+      /* Dismissed, not failed. Chrome will fire the event again on a
+         later visit, so say nothing and leave the button in place. */
+      paintInstallButton();
+    }
+  } catch {
+    /* Prompting can throw if it was already consumed or the gesture
+       expired; fall back to the instructions. */
+    openInstallHelp();
+  }
+}
+
+/* The same offer inside the fullscreen menu, which on a narrow screen
+   is the only chrome there is — the brand bar's icon row is hidden at
+   that width, so the icon button alone would be unreachable on a
+   phone, which is where installing matters most.
+
+   Called before initMenu so the click handler there picks it up. */
+function initInstallMenuItem() {
+  if (isInstalled()) return;
+  const nav = document.querySelector('#menuPanel nav');
+  if (!nav || nav.querySelector('[data-nav-action="install"]')) return;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'menu-action menu-install';
+  btn.setAttribute('data-nav-action', 'install');
+  btn.innerHTML = `${ICON.install}<span>Install the app</span>`;
+  nav.appendChild(btn);
+}
+
+/* Puts the button in the brand bar and wires up every install control
+   on the page — the header icon, the footer entry, and any other that
+   carries data-install-btn.
+
+   Safe to call repeatedly: it will not add a second button, and the
+   bound flag stops a control picking up a duplicate listener, which
+   would fire runInstall twice per tap. */
+function paintInstallButton() {
+  if (isInstalled()) {
+    document.querySelectorAll('[data-install-btn]').forEach(b => b.remove());
+    return;
+  }
+  const slot = document.querySelector('.brand-right');
+  if (slot && !slot.querySelector('[data-install-btn]')) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'sq-btn brand-header-icon install-btn';
+    btn.setAttribute('data-install-btn', '');
+    btn.setAttribute('aria-label', 'Install the Reddy Finances app');
+    btn.title = 'Install the app';
+    btn.innerHTML = ICON.install;
+    /* Ahead of the notification bell and the account slot, so it does
+       not sit between them and separate the two. */
+    const before = slot.querySelector('.notif-wrap');
+    slot.insertBefore(btn, before || null);
+  }
+
+  /* The footer entry is written as markup by footerHTML rather than
+     created here, so it arrives without a handler. */
+  document.querySelectorAll('[data-install-btn]').forEach(b => {
+    if (b.dataset.installBound) return;
+    b.dataset.installBound = '1';
+    b.addEventListener('click', runInstall);
+  });
+}
+
 let chromeReady = false;
 
 function initChrome() {
@@ -592,10 +830,16 @@ function initChrome() {
     brandBar.appendChild(brandRight);
   }
   paintIcons();
+  /* Before initMenu, which is what binds the click handler for the
+     entry this adds. */
+  initInstallMenuItem();
   initMenu();
   initCursor();
   initSound();
   initAllRubbers();
+  /* The brand bar exists by now, and beforeinstallprompt may already
+     have fired and stored its prompt before this script ran. */
+  paintInstallButton();
 
   /* The auth slot lives in the header we just painted; let the auth module
      (if loaded) fill it in with the current session. */

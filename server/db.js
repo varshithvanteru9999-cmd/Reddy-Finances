@@ -108,9 +108,12 @@ function toCar(row, features) {
    registration number is opt-in: `toCar` never returns it, and only an
    authenticated admin asks for it to be added back. A plate must not
    reach an anonymous visitor. */
-async function listVehicles({ includeRegistration = false } = {}) {
+async function listVehicles({ includeRegistration = false, includeHidden = false } = {}) {
+  const where = includeHidden
+    ? 'is_active = 1'
+    : 'is_active = 1 AND is_visible = 1';
   const [rows] = await pool.query(
-    'SELECT * FROM vehicles WHERE is_active = 1 ORDER BY listing_type, model_year DESC, name'
+    `SELECT * FROM vehicles WHERE ${where} ORDER BY listing_type, model_year DESC, name`
   );
   const [feats] = await pool.query(
     'SELECT vehicle_id, feature FROM vehicle_features ORDER BY id'
@@ -124,6 +127,7 @@ async function listVehicles({ includeRegistration = false } = {}) {
   return rows.map(r => {
     const car = toCar(r, byVehicle.get(r.id));
     if (includeRegistration) car.registration = r.registration || '';
+    car.isVisible = Boolean(r.is_visible);
     return car;
   });
 }
@@ -222,7 +226,7 @@ async function listBookings() {
            v.slug AS carId, v.registration AS vehicleRegistration,
            b.starts_on AS \`from\`, b.ends_on AS \`to\`,
            b.status, b.total, b.toll_charges, b.toll_notes,
-           b.advance_amount, b.pending_amount, b.open_return,
+           b.advance_amount, b.booking_deposit, b.pending_amount, b.open_return,
            b.billing_breakdown, b.monthly_rate, b.confirmation_sent,
            b.payment_method,
            /* What the customer has demonstrably paid: only proofs an
@@ -248,7 +252,8 @@ async function listBookings() {
            (SELECT COUNT(*) FROM payment_proofs p
              WHERE p.booking_id = b.id AND p.verified_at IS NULL) AS unverified_count,
            b.contract_sent_at, b.contract_signed_at, b.license_uploaded_at,
-           b.return_notice_given_at, b.expected_return_on, b.pickup_location,
+            b.return_notice_given_at, b.expected_return_on, b.pickup_location,
+            v.released_for_prebooking_at,
            DATEDIFF(b.starts_on, CURDATE()) AS leadDays,
            DATE(b.created_at) AS created
       FROM bookings b
@@ -281,6 +286,10 @@ async function listBookings() {
     tolls: Number(r.toll_charges || 0),
     tollNotes: r.toll_notes || '',
     advance: Number(r.advance_amount || 0),
+    /* What the customer paid online to reserve the car. Separate
+       from the advance: this comes OFF the rent, the advance is
+       owed on top and refunded at handback. */
+    bookingDeposit: Number(r.booking_deposit || 0),
     pending: Number(r.pending_amount || 0),
     openReturn: Boolean(r.open_return),
     monthlyRate: r.monthly_rate === null ? null : Number(r.monthly_rate),
@@ -705,6 +714,28 @@ async function setOdometer(slug, miles) {
   return res.affectedRows > 0;
 }
 
+async function toggleVehicleVisibility(idOrSlug) {
+  /* The id column is INT UNSIGNED, so a non-numeric string (like a
+     slug) must not reach it — MySQL would compare 'bmw-330i' against
+     the integer column and silently round it to 0. Match on slug
+     first; only try the numeric id when the value is actually a
+     number. */
+  const isNum = /^\d+$/.test(String(idOrSlug));
+  const where = isNum
+    ? '(slug = ? OR id = ?)'
+    : 'slug = ?';
+  const params = isNum ? [idOrSlug, idOrSlug] : [idOrSlug];
+
+  const [res] = await pool.query(
+    `UPDATE vehicles SET is_visible = NOT is_visible WHERE ${where}`, params
+  );
+  if (!res.affectedRows) return null;
+  const [[row]] = await pool.query(
+    `SELECT slug, is_visible FROM vehicles WHERE ${where}`, params
+  );
+  return row ? { slug: row.slug, isVisible: Boolean(row.is_visible) } : null;
+}
+
 async function deleteBooking(reference) {
   const [res] = await pool.query('DELETE FROM bookings WHERE reference = ?', [reference]);
   return res.affectedRows > 0;
@@ -870,6 +901,49 @@ async function createEnquiry(body) {
   return res.insertId;
 }
 
+/* Every enquiry, newest first, for the dashboard.
+
+   Writing them was only ever half the job: they went into this table
+   and nothing read them back, so a customer asking to view a car for
+   sale was told "we will be in touch" and no one in the office could
+   see the request. Outstanding ones sort above handled ones so the
+   list opens on what still needs a reply. */
+async function listEnquiries({ kind = null, limit = 300 } = {}) {
+  const where = kind ? 'WHERE kind = ?' : '';
+  const args = kind ? [kind] : [];
+  const [rows] = await pool.query(
+    `SELECT id, kind, full_name AS name, email, phone, message,
+            car_make AS carMake, car_year AS carYear, car_miles AS carMiles,
+            zip_code AS zip, handled, created_at AS createdAt
+       FROM enquiries ${where}
+      ORDER BY handled ASC, created_at DESC
+      LIMIT ?`,
+    [...args, Number(limit) || 300]
+  );
+  return rows.map(r => ({ ...r, handled: !!r.handled }));
+}
+
+/* Marks one enquiry dealt with, or puts it back on the list. */
+async function setEnquiryHandled(id, handled) {
+  const [res] = await pool.query(
+    'UPDATE enquiries SET handled = ? WHERE id = ?',
+    [handled ? 1 : 0, Number(id)]
+  );
+  if (!res.affectedRows) {
+    const err = new Error('That enquiry was not found');
+    err.status = 404;
+    throw err;
+  }
+  return { id: Number(id), handled: !!handled };
+}
+
+/* How many are still waiting, for the badge on the tab. */
+async function unhandledEnquiryCount() {
+  const [[row]] = await pool.query(
+    'SELECT COUNT(*) AS n FROM enquiries WHERE handled = 0');
+  return row.n;
+}
+
 async function ping() {
   const [[row]] = await pool.query('SELECT VERSION() AS v');
   return row.v;
@@ -988,6 +1062,228 @@ function contractPeriod(booking) {
     period_amount: seg.amount
   };
 }
+/* --------------------- document templates -------------------------- */
+
+/* The rental agreement, versioned.
+
+   Its wording used to live only in server/contract-terms.js, so a
+   change meant editing source and redeploying — the office could not
+   correct a clause themselves. These functions keep every version in
+   the database instead: an edit inserts a new row, nothing is ever
+   rewritten, and one version per document type is marked active so a
+   contract sent without a choice uses the current wording.
+
+   Past versions are kept because an agreement already sent has to stay
+   readable exactly as it was sent. */
+
+const TEMPLATE_TYPES = ['rental_agreement', 'sale_agreement'];
+
+function safeTemplateType(t) {
+  const v = String(t || 'rental_agreement');
+  return TEMPLATE_TYPES.includes(v) ? v : 'rental_agreement';
+}
+
+/* The shape the PDF generator reads. Anything missing falls back to the
+   file, so a half-filled template cannot produce a blank agreement. */
+function normaliseTemplateBody(body) {
+  const T = require('./contract-terms.js');
+  const src = body && typeof body === 'object' ? body : {};
+  const sections = Array.isArray(src.sections) && src.sections.length
+    ? src.sections.map((s, i) => ({
+        number: i + 1,
+        heading: String(s && s.heading || '').slice(0, 200),
+        paragraphs: (Array.isArray(s && s.paragraphs) ? s.paragraphs : [])
+          .map(p => String(p == null ? '' : p)).filter(Boolean)
+      }))
+    : T.SECTIONS.map((s, i) => ({ number: i + 1, heading: s.heading,
+                                  paragraphs: s.paragraphs }));
+  /* The detail table at the head of the document.
+
+     Only the LABELS are stored. Each row keeps the `key` the PDF looks
+     up on the booking, so "DRIVER NAME" can be renamed or a row
+     removed, while the value beside it is still filled per customer at
+     send time. Nobody's data is kept in the template — a template is
+     the blank form, not a filled-in copy. */
+  const toCell = cell => {
+    if (!cell) return null;
+    /* Accept both shapes: {label,key} from the editor, and the
+       [label,key] pair the PDF uses — a version saved before this,
+       or one round-tripped through getDocumentTemplate, arrives as the
+       pair and must not be silently dropped. */
+    if (Array.isArray(cell)) {
+      return cell[1] ? [String(cell[0] || '').slice(0, 60),
+                        String(cell[1]).slice(0, 60)] : null;
+    }
+    return cell.key ? [String(cell.label || '').slice(0, 60),
+                       String(cell.key).slice(0, 60)] : null;
+  };
+
+  const mapped = (Array.isArray(src.detailFields) ? src.detailFields : [])
+    .map(row => (Array.isArray(row) ? row : []).slice(0, 2).map(toCell))
+    .filter(row => row.some(Boolean))
+    .map(row => [row[0] || null, row[1] || null]);
+
+  /* Only fall back when nothing usable survived — an empty result here
+     meant the PDF quietly reverted to the built-in labels even though
+     the office had edited them. */
+  const fields = mapped.length ? mapped : T.DETAIL_FIELDS;
+
+  return {
+    /* letterhead */
+    company: String(src.company || T.COMPANY).slice(0, 120),
+    tagline: String(src.tagline ?? T.COMPANY_TAGLINE).slice(0, 160),
+    title: String(src.title || T.TITLE).slice(0, 200),
+    intro: String(src.intro || T.INTRO),
+    detailFields: fields,
+    sections,
+    acknowledgement: String(src.acknowledgement || T.ACKNOWLEDGEMENT),
+    footer: String(src.footer ?? T.FOOTER).slice(0, 300)
+  };
+}
+
+/* Every version, newest first — which is the order the office reads
+   them in: the current wording is what they are usually after. */
+async function listDocumentTemplates(documentType = 'rental_agreement') {
+  const type = safeTemplateType(documentType);
+  const [rows] = await pool.query(
+    `SELECT id, document_type, version, note, source_file, is_active,
+            created_by, created_at
+       FROM document_templates
+      WHERE document_type = ?
+      ORDER BY version DESC`, [type]
+  );
+  return rows.map(r => ({
+    id: r.id,
+    documentType: r.document_type,
+    version: r.version,
+    note: r.note || '',
+    fromUpload: Boolean(r.source_file),
+    isActive: Boolean(r.is_active),
+    createdBy: r.created_by || '',
+    createdAt: r.created_at
+  }));
+}
+
+/* One version in full, for the editor and for rendering. */
+async function getDocumentTemplate(id) {
+  const [[row]] = await pool.query(
+    `SELECT id, document_type, version, body, note, source_file,
+            is_active, created_by, created_at
+       FROM document_templates WHERE id = ?`, [Number(id) || 0]
+  );
+  if (!row) return null;
+  const body = typeof row.body === 'string' ? JSON.parse(row.body) : row.body;
+  return {
+    id: row.id,
+    documentType: row.document_type,
+    version: row.version,
+    body: normaliseTemplateBody(body),
+    note: row.note || '',
+    fromUpload: Boolean(row.source_file),
+    isActive: Boolean(row.is_active),
+    createdBy: row.created_by || '',
+    createdAt: row.created_at
+  };
+}
+
+/* The version a contract is sent with unless the office picks another.
+
+   Falls back to the wording in contract-terms.js when nothing has been
+   saved yet, so the agreement works on a fresh install exactly as it
+   did before any of this existed. */
+async function activeDocumentTemplate(documentType = 'rental_agreement') {
+  const type = safeTemplateType(documentType);
+  const [[row]] = await pool.query(
+    `SELECT id FROM document_templates
+      WHERE document_type = ? AND is_active = 1
+      ORDER BY version DESC LIMIT 1`, [type]
+  );
+  if (row) return getDocumentTemplate(row.id);
+
+  const T = require('./contract-terms.js');
+  return {
+    id: null,
+    documentType: type,
+    version: 0,
+    body: normaliseTemplateBody(null),
+    note: 'Built-in wording — no edited version saved yet',
+    fromUpload: false,
+    isActive: true,
+    createdBy: '',
+    createdAt: null
+  };
+}
+
+/* Saves an edit as a NEW version and makes it the active one.
+
+   Never updates an existing row: a version that has already gone to a
+   customer must keep saying what it said when it was sent. */
+async function saveDocumentTemplate({ documentType = 'rental_agreement',
+                                      body, note = '', sourceFile = null,
+                                      createdBy = '', activate = true } = {}) {
+  const type = safeTemplateType(documentType);
+  const clean = normaliseTemplateBody(body);
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[last]] = await conn.query(
+      `SELECT COALESCE(MAX(version), 0) AS v
+         FROM document_templates WHERE document_type = ? FOR UPDATE`, [type]
+    );
+    const version = Number(last.v) + 1;
+
+    if (activate) {
+      await conn.query(
+        'UPDATE document_templates SET is_active = 0 WHERE document_type = ?',
+        [type]
+      );
+    }
+
+    const [res] = await conn.query(
+      `INSERT INTO document_templates
+         (document_type, version, body, note, source_file, is_active, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [type, version, JSON.stringify(clean),
+       String(note || '').slice(0, 300) || null,
+       sourceFile || null, activate ? 1 : 0,
+       String(createdBy || '').slice(0, 190) || null]
+    );
+    await conn.commit();
+    return { id: res.insertId, version, documentType: type };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+/* Choose which saved version is sent by default. */
+async function activateDocumentTemplate(id) {
+  const tpl = await getDocumentTemplate(id);
+  if (!tpl) throw Object.assign(new Error('That document version was not found'),
+                                { status: 404 });
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query(
+      'UPDATE document_templates SET is_active = 0 WHERE document_type = ?',
+      [tpl.documentType]
+    );
+    await conn.query(
+      'UPDATE document_templates SET is_active = 1 WHERE id = ?', [tpl.id]
+    );
+    await conn.commit();
+    return { id: tpl.id, version: tpl.version, documentType: tpl.documentType };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
 /* -------------------------- contract functions ---------------------- */
 
 /* `signed` marks the copy that came back with a signature on it. The
@@ -1052,7 +1348,10 @@ async function getLicenseByBooking(bookingId) {
   return doc;
 }
 
-async function sendContractEmail(bookingRef) {
+/* `templateId` names the saved version to send. Omitting it uses the
+   active one, which is what the dashboard sends unless the office
+   picks a different version from the list. */
+async function sendContractEmail(bookingRef, templateId = null) {
   const [[booking]] = await pool.query(
     `SELECT b.*, c.full_name, c.email, c.phone, c.license_number,
             v.slug, v.name AS vehicle_name, v.model_year, v.trim_level,
@@ -1070,13 +1369,31 @@ async function sendContractEmail(bookingRef) {
 
   const period = contractPeriod(booking);
 
+  /* The wording to send: the version the office chose, or the active
+     one. activeDocumentTemplate() falls back to contract-terms.js when
+     nothing has been saved, so this works on a fresh install. */
+  const template = templateId
+    ? await getDocumentTemplate(templateId)
+    : await activeDocumentTemplate('rental_agreement');
+  if (templateId && !template) {
+    throw Object.assign(new Error('That document version was not found'),
+                        { status: 404 });
+  }
+
   /* Unsigned copy — the customer signs it on the sign page, and that
      submission regenerates the PDF with their signature stamped in. */
   const pdfBuffer = await generateContractPdf({
     ...booking,
     ...period,
     monthly_rate: booking.monthly_rate || booking.vehicle_monthly_rate
-  });
+  }, null, template && template.body);
+
+  /* Remember which wording this customer received, so a contract sent
+     months ago can still be traced to the version it carried. */
+  if (template && template.id) {
+    await pool.query('UPDATE bookings SET contract_template_id = ? WHERE id = ?',
+                     [template.id, booking.id]);
+  }
 
   // Save contract document record
   const fileName = `contract-${bookingRef}.pdf`;
@@ -1420,10 +1737,17 @@ async function bookingsForCustomer(email) {
            v.image_path AS vehicleImage,
            b.starts_on AS \`from\`, b.ends_on AS \`to\`,
            b.status, b.total, b.toll_charges, b.monthly_rate,
-           b.advance_amount, b.pending_amount, b.open_return,
+           b.advance_amount, b.booking_deposit, b.pending_amount, b.open_return,
            b.confirmation_sent, b.contract_sent_at, b.contract_signed_at,
            b.license_uploaded_at, b.return_notice_given_at, b.expected_return_on,
-           b.pickup_location,
+           b.pickup_location, b.payment_method,
+           /* Whether this customer has already sent proof of payment,
+              so the card can say "received" instead of asking again. */
+           (SELECT COUNT(*) FROM payment_proofs p
+             WHERE p.booking_id = b.id)                       AS proof_count,
+           (SELECT COUNT(*) FROM payment_proofs p
+             WHERE p.booking_id = b.id
+               AND p.verified_at IS NOT NULL)                 AS verified_proof_count,
            DATE(b.created_at) AS created
       FROM bookings b
       JOIN customers c ON c.id = b.customer_id
@@ -1466,6 +1790,29 @@ async function bookingsForCustomer(email) {
     });
   }
 
+  /* Walkaround videos, grouped by stage so each section on the card
+     shows only its own. */
+  const [videos] = await pool.query(
+    `SELECT v.id, v.booking_id, v.stage, v.file_path, v.note,
+            v.duration_secs, v.file_bytes
+       FROM booking_videos v
+       JOIN bookings b  ON b.id = v.booking_id
+       JOIN customers c ON c.id = b.customer_id
+      WHERE c.email = ?
+      ORDER BY v.uploaded_at ASC, v.id ASC`, [email]);
+
+  const videosByBooking = new Map();
+  for (const v of videos) {
+    if (!videosByBooking.has(v.booking_id)) {
+      videosByBooking.set(v.booking_id, { pickup: [], return: [], damage: [] });
+    }
+    const bucket = videosByBooking.get(v.booking_id)[v.stage];
+    if (bucket) bucket.push({
+      id: v.id, src: v.file_path, note: v.note || '',
+      durationSecs: v.duration_secs, bytes: v.file_bytes
+    });
+  }
+
   return rows.map(({ advance_amount, ...r }) => ({
     /* The advance is negotiated between the office and the customer, so
        it belongs on the invoice the admin sends — not on the customer's
@@ -1483,6 +1830,23 @@ async function bookingsForCustomer(email) {
     /* Set when the slot confirmation is sent, so the dashboard can
        show which bookings still need one. */
     pickupLocation: r.pickup_location || null,
+    /* How the money arrived. The page needs it because a booking
+       settled in cash has no screenshot to upload: the office ticks it
+       off at the counter, and the customer's photo steps open on the
+       strength of that instead. */
+    paymentMethod: r.payment_method || null,
+    /* What the customer has already put down, and whether a screenshot
+       of it is on file.
+
+       Neither reached this page before, so a booking made seconds
+       earlier WITH a deposit still said "upload your payment
+       screenshot below" and offered the button again. To the customer
+       that reads as the payment having vanished — they had just paid,
+       uploaded proof, and been redirected here to be asked for it
+       afresh. */
+    bookingDeposit: Number(r.booking_deposit || 0),
+    proofCount: Number(r.proof_count || 0),
+    paymentVerified: Number(r.verified_proof_count || 0) > 0,
     contractSentAt: r.contract_sent_at,
     contractSignedAt: r.contract_signed_at,
     licenseUploadedAt: r.license_uploaded_at,
@@ -1490,7 +1854,9 @@ async function bookingsForCustomer(email) {
     expectedReturnOn: r.expected_return_on,
     photos: (byBooking.get(r._bookingId) || {}).pickup || {},
     returnPhotos: (byBooking.get(r._bookingId) || {}).return || {},
-    damagePhotos: damageByBooking.get(r._bookingId) || []
+    damagePhotos: damageByBooking.get(r._bookingId) || [],
+    videos: videosByBooking.get(r._bookingId)
+            || { pickup: [], return: [], damage: [] }
   }));
 }
 
@@ -1577,6 +1943,141 @@ async function markNotificationsRead(audience, email, ids) {
     await pool.query('UPDATE notifications SET is_read = 1 WHERE customer_id = ?', [cust.id]);
   }
   return true;
+}
+
+/* ------------------------- auth sessions --------------------------- */
+
+/* A signed cookie says WHO; it cannot say "not any more". This registry
+   is the half that can: the cookie carries an opaque id and this table
+   decides whether that id is still good.
+
+   Revocation is checked against an in-memory set rather than a query
+   per request, so signing in does not cost a database round trip on
+   every page. The trade is honest about its limit: a revocation made
+   by ANOTHER process (or another server) lands within one refresh
+   interval, whereas a sign-out on THIS process is effective
+   immediately, because the id is dropped from the set as it is revoked.
+   A single-process deployment — which is what this is — therefore has no
+   window at all.
+
+   If the table has not been created yet, everything degrades to the old
+   stateless behaviour and sessionsAvailable() reports false, so the
+   server can say so out loud rather than pretending revocation works. */
+
+const SESSION_REFRESH_MS = 30_000;
+let sessionTableChecked = false;
+let sessionTablePresent = false;
+const activeSessions = new Set();
+
+async function sessionsAvailable() {
+  if (sessionTableChecked) return sessionTablePresent;
+  sessionTableChecked = true;
+  try {
+    await pool.query('SELECT 1 FROM auth_sessions LIMIT 1');
+    sessionTablePresent = true;
+  } catch {
+    sessionTablePresent = false;
+  }
+  return sessionTablePresent;
+}
+
+async function loadActiveSessions() {
+  if (!sessionTableChecked) await sessionsAvailable();
+  if (!sessionTablePresent) return;
+  try {
+    const [rows] = await pool.query(
+      `SELECT id FROM auth_sessions
+        WHERE revoked_at IS NULL AND expires_at > NOW()`
+    );
+    const next = new Set(rows.map(r => r.id));
+    /* Replace rather than add: a session revoked since the last poll
+       must disappear, and a set that only ever grows would keep
+       honouring it. */
+    activeSessions.clear();
+    for (const id of next) activeSessions.add(id);
+    /* Opportunistic cleanup — nobody is waiting on these rows. */
+    pool.query(
+      `DELETE FROM auth_sessions
+        WHERE expires_at < NOW()
+           OR revoked_at < NOW() - INTERVAL 30 DAY`
+    ).catch(() => {});
+  } catch { /* keep the previous view; a transient blip is not a logout */ }
+}
+
+function startSessionWatcher() {
+  /* Load once straight away, not only on the first tick. The startup
+     block has already confirmed the table exists, which flips
+     sessionTablePresent to true — so with an empty in-memory set until
+     the first 30s tick, every signed-in visitor would have been treated
+     as signed out and bounced to the login page on a server restart. */
+  loadActiveSessions().catch(() => {});
+  const t = setInterval(loadActiveSessions, SESSION_REFRESH_MS);
+  if (t.unref) t.unref();
+  return t;
+}
+
+async function createAuthSession({ id, userId, email, admin, expiresAt, ip, userAgent }) {
+  if (!sessionTablePresent) return false;
+  try {
+    await pool.query(
+      `INSERT INTO auth_sessions (id, user_id, email, admin, expires_at, ip, user_agent)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, String(userId || ''), String(email || ''), admin ? 1 : 0,
+       expiresAt, ip || null, String(userAgent || '').slice(0, 255) || null]
+    );
+    activeSessions.add(id);
+    return true;
+  } catch (err) {
+    console.error('[auth] could not record session:', err.message);
+    return false;
+  }
+}
+
+/* Synchronous by design — the guards that call it cannot await without
+   every route becoming async. Reads the in-memory set, which loadActive-
+   Sessions() keeps current. */
+function authSessionActive(id) {
+  if (!sessionTablePresent) return true;   /* no table -> stateless mode */
+  if (!id) return false;
+  return activeSessions.has(id);
+}
+
+async function revokeAuthSession(id) {
+  if (!id) return;
+  /* Drop from the set first: that is what makes sign-out take effect
+     for the very next request from this process. */
+  activeSessions.delete(id);
+  if (!sessionTablePresent) return;
+  try {
+    await pool.query(
+      `UPDATE auth_sessions SET revoked_at = NOW() WHERE id = ? AND revoked_at IS NULL`, [id]
+    );
+  } catch (err) {
+    console.error('[auth] revoke failed:', err.message);
+  }
+}
+
+/* Used when the admin password changes: every session that was signed
+   in under the old password has to go, or the change buys nothing. */
+async function revokeAuthSessionsForEmail(email, { exceptId = null } = {}) {
+  const mail = String(email || '').toLowerCase();
+  if (!mail) return 0;
+  for (const id of [...activeSessions]) {
+    if (exceptId && id === exceptId) continue;
+    activeSessions.delete(id);
+  }
+  if (!sessionTablePresent) return 0;
+  try {
+    const [res] = await pool.query(
+      `UPDATE auth_sessions SET revoked_at = NOW()
+        WHERE LOWER(email) = ? AND revoked_at IS NULL${exceptId ? ' AND id <> ?' : ''}`,
+      exceptId ? [mail, exceptId] : [mail]
+    );
+    return res.affectedRows || 0;
+  } catch (err) {
+    console.error('[auth] bulk revoke failed:', err.message);
+    return 0;
+  }
 }
 
 /* ------------------- return notice & release ---------------------- */
@@ -2158,10 +2659,22 @@ async function signContract(bookingRef, { dataUrl, typedName, method, ip } = {})
   }
 
   const signedOn = new Date().toISOString().slice(0, 10);
+
+  /* Sign the wording this customer was actually SENT, not whatever is
+     active now. contract_template_id was stamped when the agreement
+     went out; without it the signed copy could carry a clause the
+     customer never agreed to, because the office had edited the
+     document in between. Falls back to the active version for older
+     bookings that predate the versioning. */
+  const signedTemplate = booking.contract_template_id
+    ? await getDocumentTemplate(booking.contract_template_id)
+    : await activeDocumentTemplate('rental_agreement');
+
   const pdfBuffer = await generateContractPdf(
     { ...booking, ...contractPeriod(booking),
       monthly_rate: booking.monthly_rate || booking.vehicle_monthly_rate },
-    { dataUrl, typedName: name || booking.full_name, method, signedOn, ip }
+    { dataUrl, typedName: name || booking.full_name, method, signedOn, ip },
+    signedTemplate && signedTemplate.body
   );
 
   const fileName = `signed-contract-${ref}-${Date.now()}.pdf`;
@@ -2208,7 +2721,7 @@ async function listPendingContracts() {
 async function handleBookingPhotoUpload(bookingRef, photoType, stage, file) {
   const ref = safeRef(bookingRef);
   const [[booking]] = await pool.query(
-    'SELECT id, status FROM bookings WHERE reference = ?', [ref]);
+    'SELECT id, status, starts_on FROM bookings WHERE reference = ?', [ref]);
   if (!booking) throw Object.assign(new Error('Booking not found'), { status: 404 });
 
   /* Condition photos record the state of a car at handover, so they
@@ -2221,6 +2734,33 @@ async function handleBookingPhotoUpload(bookingRef, photoType, stage, file) {
       new Error('Vehicle photos can be uploaded once your booking is confirmed'),
       { status: 409 }
     );
+  }
+
+  /* Pick-up photos cannot be taken before the pick-up day, whoever the
+     booking belongs to and however it was paid for.
+
+     This matters most for a cash booking. The office ticks "paid by
+     cash" at the counter, which confirms the booking and opens these
+     steps — but confirming can happen weeks ahead, and the shots are
+     meant to show the car as it is handed over. Without this a customer
+     could upload last month's photos and then claim damage was already
+     there. The first of these uploads also stamps pickup_time, which
+     would otherwise record a moment that is not the handover at all.
+
+     Return photos are exempt: they belong to the other end of the
+     rental and are gated by the return notice instead. */
+  if (stage === 'pickup' && booking.starts_on) {
+    const startsOn = new Date(booking.starts_on);
+    startsOn.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (today < startsOn) {
+      throw Object.assign(
+        new Error('Vehicle photos open on your pick-up day, '
+                + startsOn.toDateString().slice(4)),
+        { status: 409 }
+      );
+    }
   }
 
   /* Condition photos are images only — never a PDF, never anything the
@@ -2237,6 +2777,33 @@ async function handleBookingPhotoUpload(bookingRef, photoType, stage, file) {
      ON DUPLICATE KEY UPDATE file_path = VALUES(file_path)`,
     [booking.id, photoType, stage, `uploads/bookings/${fileName}`]
   );
+
+  /* The odometer photo carries a number the business needs — how far
+     the car was driven — and until now only the image was kept, so
+     nothing could report mileage.
+
+     Read here, but written as a SUGGESTION: source 'ocr' means the
+     office has not checked it. A dashboard photo is a hard read, so
+     the dashboard shows unconfirmed figures as such and lets the
+     office correct them. A reading already confirmed by the office is
+     never overwritten by a later scan. */
+  let odometer = null;
+  if (photoType === 'odometer' && (stage === 'pickup' || stage === 'return')) {
+    try {
+      const scan = await scanOdometer(file.buffer);
+      if (scan && scan.miles !== null) {
+        const col = stage === 'pickup' ? 'odometer_pickup' : 'odometer_return';
+        const src = stage === 'pickup'
+          ? 'odometer_pickup_source' : 'odometer_return_source';
+        const [res] = await pool.query(
+          `UPDATE bookings SET ${col} = ?, ${src} = 'ocr'
+            WHERE id = ? AND (${src} IS NULL OR ${src} = 'ocr')`,
+          [scan.miles, booking.id]
+        );
+        if (res.affectedRows) odometer = scan.miles;
+      }
+    } catch { /* a failed read must never block the upload */ }
+  }
 
   /* The pick-up time, stamped from the first pick-up photo.
 
@@ -2261,7 +2828,7 @@ async function handleBookingPhotoUpload(bookingRef, photoType, stage, file) {
     }
   }
 
-  return { path: `uploads/bookings/${fileName}`, pickupTime };
+  return { path: `uploads/bookings/${fileName}`, pickupTime, odometer };
 }
 
 /* Damage photos: any number per booking, each with its own note.
@@ -2309,6 +2876,250 @@ async function addDamagePhoto(bookingRef, stage, file, note = '') {
     [booking.id, `uploads/bookings/${fileName}`, clean, stage]
   );
   return { id: res.insertId, path: `uploads/bookings/${fileName}`, note: clean || '' };
+}
+
+/* ---------------------------- mileage ------------------------------ */
+
+/* Every booking with an odometer reading at either end, for the
+   Overview tab's Miles tracker.
+
+   Miles driven is the difference between the two readings, and is only
+   reported when BOTH exist — one reading on its own says nothing about
+   distance. A return figure below the pickup figure is flagged rather
+   than shown as a negative: it means one of the two was misread, and
+   silently printing "-4,210 miles" would be worse than saying so.
+
+   `pickupSource`/`returnSource` tell the dashboard which figures are
+   still unconfirmed OCR guesses, so it can mark them. */
+async function mileageReport({ from = null, to = null } = {}) {
+  const where = ['(b.odometer_pickup IS NOT NULL OR b.odometer_return IS NOT NULL)'];
+  const args = [];
+  if (from) { where.push('b.starts_on >= ?'); args.push(from); }
+  if (to)   { where.push('b.starts_on <= ?'); args.push(to); }
+
+  const [rows] = await pool.query(
+    `SELECT b.reference, b.starts_on, b.ends_on, b.status,
+            b.odometer_pickup, b.odometer_return,
+            b.odometer_pickup_source, b.odometer_return_source,
+            c.full_name, c.email,
+            v.name AS vehicle_name, v.model_year, v.slug
+       FROM bookings b
+       JOIN customers c ON c.id = b.customer_id
+       JOIN vehicles  v ON v.id = b.vehicle_id
+      WHERE ${where.join(' AND ')}
+      ORDER BY b.starts_on DESC, b.id DESC`, args);
+
+  return rows.map(r => {
+    const pickup = r.odometer_pickup === null ? null : Number(r.odometer_pickup);
+    const ret    = r.odometer_return === null ? null : Number(r.odometer_return);
+    const both   = pickup !== null && ret !== null;
+    return {
+      reference: r.reference,
+      customer: r.full_name || '',
+      email: r.email || '',
+      vehicle: [r.model_year, r.vehicle_name].filter(Boolean).join(' '),
+      carId: r.slug || '',
+      from: r.starts_on,
+      to: r.ends_on,
+      status: r.status,
+      pickup,
+      return: ret,
+      pickupSource: r.odometer_pickup_source,
+      returnSource: r.odometer_return_source,
+      /* null until both ends are known. */
+      miles: both ? ret - pickup : null,
+      /* a return lower than the pickup is a misread, not a journey */
+      suspect: both && ret < pickup,
+      unconfirmed: r.odometer_pickup_source === 'ocr'
+                || r.odometer_return_source === 'ocr'
+    };
+  });
+}
+
+/* The office correcting a reading, or supplying one the scan missed.
+   Writing by hand marks it 'admin', which stops a later photo upload
+   from overwriting it. */
+async function setOdometer(bookingRef, stage, miles) {
+  const ref = safeRef(bookingRef);
+  const which = stage === 'return' ? 'return' : 'pickup';
+  const col = which === 'pickup' ? 'odometer_pickup' : 'odometer_return';
+  const src = which === 'pickup'
+    ? 'odometer_pickup_source' : 'odometer_return_source';
+
+  const [[booking]] = await pool.query(
+    'SELECT id FROM bookings WHERE reference = ?', [ref]);
+  if (!booking) throw Object.assign(new Error('Booking not found'), { status: 404 });
+
+  /* An empty value clears the reading rather than storing zero — the
+     office may be removing a bad scan. */
+  const raw = String(miles == null ? '' : miles).trim();
+  if (raw === '') {
+    await pool.query(
+      `UPDATE bookings SET ${col} = NULL, ${src} = NULL WHERE id = ?`, [booking.id]);
+    return { reference: ref, stage: which, miles: null };
+  }
+
+  const n = Math.round(Number(raw));
+  if (!isFinite(n) || n < 0 || n > 999999) {
+    throw Object.assign(new Error('Enter a mileage between 0 and 999,999'),
+                        { status: 400 });
+  }
+  await pool.query(
+    `UPDATE bookings SET ${col} = ?, ${src} = 'admin' WHERE id = ?`,
+    [n, booking.id]);
+  return { reference: ref, stage: which, miles: n };
+}
+
+/* -------------------------- walkaround videos ---------------------- */
+
+/* The formats a browser can produce from the compression step, plus
+   the ones a phone might hand over untouched if compression was
+   skipped. MOV is included because iOS records it and older Safari
+   cannot always re-encode. */
+const VIDEO_TYPES = {
+  'video/webm': '.webm',
+  'video/mp4': '.mp4',
+  'video/quicktime': '.mov',
+  'video/x-m4v': '.m4v'
+};
+
+/* Optional video alongside the condition photos, for any of the three
+   stages: pickup, return, damage.
+
+   What arrives has normally been compressed in the browser already —
+   downscaled and re-encoded before upload — so the 25MB ceiling here
+   is a backstop for a device where that failed, not the expected
+   size. A 30-second walkaround compresses to roughly 2-4 MB. */
+async function handleBookingVideoUpload(bookingRef, stage, file, note = '',
+                                        meta = {}) {
+  const ref = safeRef(bookingRef);
+  const [[booking]] = await pool.query(
+    'SELECT id, status, starts_on FROM bookings WHERE reference = ?', [ref]);
+  if (!booking) throw Object.assign(new Error('Booking not found'), { status: 404 });
+
+  const clean = ['pickup', 'return', 'damage'].includes(String(stage))
+    ? String(stage) : 'pickup';
+
+  /* Same gate as the photos: a video records the car changing hands,
+     so it waits for the office to accept the booking. */
+  if (!['Confirmed', 'Active'].includes(String(booking.status))) {
+    throw Object.assign(
+      new Error('Videos can be uploaded once your booking is confirmed'),
+      { status: 409 }
+    );
+  }
+
+  /* And, for the pickup stage, the same day gate the photos use — a
+     pickup video taken three weeks early is not a pickup video. */
+  if (clean === 'pickup' && booking.starts_on) {
+    const startsOn = new Date(booking.starts_on);
+    startsOn.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (today < startsOn) {
+      throw Object.assign(
+        new Error('Videos open on your pick-up day, '
+                + startsOn.toDateString().slice(4)),
+        { status: 409 }
+      );
+    }
+  }
+
+  if (!file || !file.buffer || !file.buffer.length) {
+    throw Object.assign(new Error('That video is empty'), { status: 400 });
+  }
+  if (file.buffer.length > 25e6) {
+    throw Object.assign(
+      new Error('That video is too large (25MB limit). Try a shorter clip.'),
+      { status: 413 }
+    );
+  }
+
+  /* A cap per stage, so a retry loop cannot fill the disk. */
+  const [[{ n }]] = await pool.query(
+    'SELECT COUNT(*) AS n FROM booking_videos WHERE booking_id = ? AND stage = ?',
+    [booking.id, clean]);
+  const LIMIT = clean === 'damage' ? 5 : 2;
+  if (n >= LIMIT) {
+    throw Object.assign(
+      new Error(`Up to ${LIMIT} video${LIMIT > 1 ? 's' : ''} for this step`),
+      { status: 409 });
+  }
+
+  const ext = safeExt(file, VIDEO_TYPES, 'video');
+  const fileName = `video-${ref}-${clean}-${Date.now()}${ext}`;
+  const filePath = path.join(__dirname, '..', 'uploads', 'bookings', fileName);
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, file.buffer);
+
+  const theNote = String(note || '').trim().slice(0, 300) || null;
+  const secs = Number(meta.durationSecs);
+  const origin = Number(meta.originalBytes);
+
+  const [res] = await pool.query(
+    `INSERT INTO booking_videos
+       (booking_id, stage, file_path, note, duration_secs,
+        file_bytes, original_bytes)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [booking.id, clean, `uploads/bookings/${fileName}`, theNote,
+     isFinite(secs) && secs > 0 ? Math.min(Math.round(secs), 65535) : null,
+     file.buffer.length,
+     isFinite(origin) && origin > 0 ? Math.round(origin) : null]
+  );
+
+  await notify({
+    audience: 'admin',
+    bookingId: booking.id,
+    kind: 'booking-video',
+    title: 'Vehicle video uploaded',
+    body: `${ref}: the customer uploaded a ${clean} video.`,
+    link: 'admin.html#photos'
+  });
+
+  return {
+    id: res.insertId,
+    path: `uploads/bookings/${fileName}`,
+    stage: clean,
+    note: theNote || '',
+    bytes: file.buffer.length
+  };
+}
+
+/* Every video on one booking, for the customer's page. */
+async function bookingVideos(bookingRef) {
+  const ref = safeRef(bookingRef);
+  const [rows] = await pool.query(
+    `SELECT v.id, v.stage, v.file_path, v.note, v.duration_secs,
+            v.file_bytes, v.original_bytes, v.uploaded_at
+       FROM booking_videos v
+       JOIN bookings b ON b.id = v.booking_id
+      WHERE b.reference = ?
+      ORDER BY v.uploaded_at ASC, v.id ASC`, [ref]);
+  return rows.map(r => ({
+    id: r.id,
+    stage: r.stage,
+    src: r.file_path,
+    note: r.note || '',
+    durationSecs: r.duration_secs,
+    bytes: r.file_bytes,
+    originalBytes: r.original_bytes,
+    uploadedAt: r.uploaded_at
+  }));
+}
+
+/* Removing one the customer uploaded by mistake. */
+async function deleteBookingVideo(bookingRef, videoId) {
+  const ref = safeRef(bookingRef);
+  const [[row]] = await pool.query(
+    `SELECT v.id, v.file_path FROM booking_videos v
+       JOIN bookings b ON b.id = v.booking_id
+      WHERE b.reference = ? AND v.id = ?`, [ref, Number(videoId) || 0]);
+  if (!row) throw Object.assign(new Error('Video not found'), { status: 404 });
+
+  await pool.query('DELETE FROM booking_videos WHERE id = ?', [row.id]);
+  try { await fs.unlink(path.join(__dirname, '..', row.file_path)); }
+  catch { /* already gone — the row is what matters */ }
+  return { id: row.id };
 }
 
 async function damagePhotos(bookingRef) {
@@ -2389,6 +3200,26 @@ async function allBookingsWithPhotos() {
     });
   }
 
+  /* Walkaround videos, grouped by stage so the dashboard can show
+     each one beside the photos it belongs with. */
+  const [vids] = await pool.query(`
+    SELECT v.booking_id, v.id, v.stage, v.file_path, v.note,
+           v.duration_secs, v.file_bytes, v.original_bytes
+      FROM booking_videos v
+     ORDER BY v.uploaded_at ASC, v.id ASC`);
+  const videoBy = new Map();
+  for (const v of vids) {
+    if (!videoBy.has(v.booking_id)) {
+      videoBy.set(v.booking_id, { pickup: [], return: [], damage: [] });
+    }
+    const bucket = videoBy.get(v.booking_id)[v.stage];
+    if (bucket) bucket.push({
+      id: v.id, src: v.file_path, note: v.note || '',
+      durationSecs: v.duration_secs, bytes: v.file_bytes,
+      originalBytes: v.original_bytes
+    });
+  }
+
   /* The signed agreement belongs on this tab too: it is the other
      document a customer hands back, and the office should not have to
      dig through the server to find it. Only signed copies — the blank
@@ -2417,8 +3248,11 @@ async function allBookingsWithPhotos() {
     .filter(r => {
       const pics = byBooking.get(r._bookingId);
       const dmg = damageBy.get(r._bookingId);
+      const vid = videoBy.get(r._bookingId);
       return (pics && (Object.keys(pics.pickup).length || Object.keys(pics.return).length))
           || (dmg && dmg.length)
+          /* a booking with only a video still belongs on this tab */
+          || (vid && (vid.pickup.length || vid.return.length || vid.damage.length))
           || docBy.has(r._bookingId);
     })
     .map(r => ({
@@ -2438,6 +3272,8 @@ async function allBookingsWithPhotos() {
       pickup: (byBooking.get(r._bookingId) || {}).pickup || {},
       return: (byBooking.get(r._bookingId) || {}).return || {},
       damage: damageBy.get(r._bookingId) || [],
+      videos: videoBy.get(r._bookingId)
+              || { pickup: [], return: [], damage: [] },
       signedContract: docBy.get(r._bookingId) || null
     }));
 }
@@ -2564,6 +3400,36 @@ async function addPaymentProof(bookingRef, file,
     [booking.id]
   );
 
+  /* The reservation deposit, written onto the booking.
+
+     booking_deposit was added by migration 022 and then read in six
+     places while nothing ever wrote it, so every booking reported a
+     deposit of 0.00 however much the customer had actually sent. The
+     dashboard's Deposit column had nothing to show, which is the
+     "deposit does not appear" fault.
+
+     What goes in is the CLAIM — what the customer says they paid, or
+     failing that what OCR read off the image. It is not proof, and it
+     is deliberately not treated as proof: prebookingPaid still counts
+     only verified payments, so the office's confirmation step is
+     unchanged. This figure exists so the claim is visible at all.
+
+     Only for the prebooking stage, and only when the booking has no
+     deposit yet: a second screenshot against the same booking must not
+     silently rewrite the first figure. */
+  if (stage === 'prebooking') {
+    const claimed = clean !== null && clean !== undefined ? Number(clean)
+                  : scan.amount !== null ? Number(scan.amount)
+                  : null;
+    if (claimed !== null && isFinite(claimed) && claimed > 0) {
+      await pool.query(
+        `UPDATE bookings SET booking_deposit = ?
+          WHERE id = ? AND (booking_deposit IS NULL OR booking_deposit = 0)`,
+        [round2(claimed), booking.id]
+      );
+    }
+  }
+
   /* The office needs to know money has been claimed, so it is chased
      rather than sitting unseen in a folder. */
   const scanNote = scan.amount !== null
@@ -2688,6 +3554,14 @@ async function bookingDetail(ref) {
       ORDER BY uploaded_at ASC, id ASC`,
     [b.id]
   );
+  const [clips] = await pool.query(
+    `SELECT id, stage, file_path, note, duration_secs,
+            file_bytes, original_bytes
+       FROM booking_videos
+      WHERE booking_id = ?
+      ORDER BY uploaded_at ASC, id ASC`,
+    [b.id]
+  );
 
   return {
     ref: b.reference,
@@ -2724,7 +3598,16 @@ async function bookingDetail(ref) {
         id: d.id, src: d.file_path, note: d.note || '',
         stage: d.stage, at: d.uploaded_at
       }))
-    }
+    },
+    /* The optional walkaround clips, grouped the same way. */
+    videos: ['pickup', 'return', 'damage'].reduce((out, stage) => {
+      out[stage] = clips.filter(v => v.stage === stage).map(v => ({
+        id: v.id, src: v.file_path, note: v.note || '',
+        durationSecs: v.duration_secs, bytes: v.file_bytes,
+        originalBytes: v.original_bytes
+      }));
+      return out;
+    }, {})
   };
 }
 
@@ -2778,7 +3661,8 @@ async function settlement(booking) {
      API, so callers on either side need no lookup of their own. */
   const byRef = typeof booking === 'string' && !/^\d+$/.test(booking);
   const [[b]] = await pool.query(
-    `SELECT id, total, toll_charges, advance_amount FROM bookings
+    `SELECT id, total, toll_charges, advance_amount, booking_deposit
+       FROM bookings
       WHERE ${byRef ? 'reference' : 'id'} = ?`,
     [byRef ? safeRef(booking) : booking]
   );
@@ -2796,10 +3680,31 @@ async function settlement(booking) {
      FROM payment_proofs WHERE booking_id = ?`, [bookingId]
   );
 
-  const due  = Number(b.total || 0) + Number(b.toll_charges || 0) + Number(b.advance_amount || 0);
-  const paid = Number(sums.paid || 0);
+  /* Three sums, and they behave differently.
+
+       rent + tolls      what the rental costs
+       booking_deposit   paid online to reserve the car. Money already
+                         received, so it comes OFF the rent.
+       advance_amount    the refundable security advance, one month's
+                         rent. Paid at pickup and returned at handback,
+                         so it is owed ON TOP of the rent but is not
+                         revenue.
+
+     For a $500/month car with $100 down: $400 of rent remains, plus a
+     $500 advance — $900 due at pickup, of which $500 comes back. */
+  const rent    = Number(b.total || 0) + Number(b.toll_charges || 0);
+  const deposit = Number(b.booking_deposit || 0);
+  const advance = Number(b.advance_amount || 0);
+
+  /* What the customer still has to hand over. */
+  const due     = rent + advance;
+  const paid    = Number(sums.paid || 0) + deposit;
+
   return {
+    rent:       round2(rent),
     due:        round2(due),
+    deposit:    round2(deposit),
+    advance:    round2(advance),
     paid:       round2(paid),
     paidCash:   round2(Number(sums.paid_cash || 0)),
     paidOnline: round2(Number(sums.paid_online || 0)),
@@ -2925,7 +3830,7 @@ async function paymentProofCounts() {
    booking is reported rather than guessed at.
 ------------------------------------------------------------------- */
 const { readTollSheet, plateKey } = require('./tollsheet.js');
-const { scanPayment } = require('./paymentscan.js');
+const { scanPayment, scanOdometer } = require('./paymentscan.js');
 
 /* The booking deposit: what a customer pays up front to hold a car.
    Every new booking needs evidence of at least this much before the
@@ -3119,8 +4024,15 @@ module.exports = {
   upcomingReleases, quoteBooking, setOdometer, markConfirmationSent,
   sendSlotConfirmationEmail, handoverBooking,
   createEnquiry,
+  listEnquiries,
+  setEnquiryHandled,
+  unhandledEnquiryCount,
   sendContractEmail, handleContractUpload, listPendingContracts, bookingOwnerEmail,
   signContract, contractTerms, decideBooking, envValue, vehicleAvailability,
+  listDocumentTemplates, getDocumentTemplate, activeDocumentTemplate,
+  saveDocumentTemplate, activateDocumentTemplate,
+  handleBookingVideoUpload, bookingVideos, deleteBookingVideo,
+  mileageReport, setOdometer,
   giveReturnNotice, awaitingRelease, releaseVehicle, unreleaseVehicle,
   prebookingQueue, RETURN_NOTICE_DAYS, bookedVehicles,
   adminNotifications, customerNotifications, markNotificationsRead,
@@ -3128,5 +4040,8 @@ module.exports = {
   getContractByBooking, getLicenseByBooking, markContractSigned,
   getCustomerByEmail, updateCustomer,
   handleBookingPhotoUpload, allBookingsWithPhotos,
-  markPrebookingPaid
+  markPrebookingPaid,
+  sessionsAvailable, startSessionWatcher, loadActiveSessions,
+  createAuthSession, authSessionActive, revokeAuthSession, revokeAuthSessionsForEmail,
+  toggleVehicleVisibility
 };

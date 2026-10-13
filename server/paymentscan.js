@@ -213,4 +213,81 @@ async function scanPayment(buffer, expected = null) {
   return { amount, status, shortfall, confidence: Math.round(confidence) };
 }
 
-module.exports = { scanPayment, parseAmount, compare };
+/* ------------------------- odometer reading -----------------------
+
+   Reads the mileage off a dashboard photo. Deliberately separate from
+   parseAmount: an odometer is a bare integer with no currency symbol,
+   and the figures around it are different — a trip meter, a fuel
+   range, a speed, a temperature.
+
+   This is a SUGGESTION, never a fact. A dashboard photo is a far
+   harder read than a payment screenshot: glare, angle, a trip meter
+   sitting beside the true odometer, digits caught mid-roll. Every
+   figure it produces is offered to the office to confirm or correct,
+   and the dashboard shows which readings are still unconfirmed.
+------------------------------------------------------------------- */
+
+/* Plausible mileage for a rental car. Below the floor is almost always
+   a trip meter; above the ceiling is a misread. */
+const ODO_MIN = 10;
+const ODO_MAX = 999999;
+
+function parseOdometer(text) {
+  const raw = String(text || '');
+  if (!raw.trim()) return null;
+
+  /* Numbers with optional thousands separators, 2-7 digits. */
+  const found = [];
+  const re = /\b(\d{1,3}(?:[,. ]\d{3})+|\d{2,7})\b/g;
+  let m;
+  while ((m = re.exec(raw))) {
+    const digits = m[1].replace(/[,. ]/g, '');
+    const n = Number(digits);
+    if (!isFinite(n)) continue;
+    if (n < ODO_MIN || n > ODO_MAX) continue;
+
+    /* A decimal tenth is how trip meters read (123.4), and an
+       odometer does not show one — so a match whose original text
+       carried a single trailing decimal digit is skipped. */
+    const after = raw.slice(m.index + m[1].length);
+    if (/^\.\d\b/.test(after)) continue;
+
+    found.push({ value: n, digits: digits.length, index: m.index });
+  }
+  if (!found.length) return null;
+
+  /* The odometer is normally the longest number on the dash — a trip
+     meter is shorter, a temperature or speed shorter still. Ties go to
+     the larger figure, which is the odometer beside its trip meter. */
+  found.sort((a, b) => b.digits - a.digits || b.value - a.value);
+  return found[0].value;
+}
+
+/* Returns { miles, confidence } — miles is null when nothing usable
+   was found, and the caller treats that as "ask the office to type
+   it". Never throws: a failed read must not block a photo upload. */
+async function scanOdometer(buffer) {
+  const fail = { miles: null, confidence: 0 };
+
+  const engine = ocr();
+  if (!engine || !buffer || !buffer.length) return fail;
+  if (!looksLikeImage(buffer)) return fail;
+
+  let text = '', confidence = 0;
+  try {
+    const result = await Promise.race([
+      engine.recognize(buffer, 'eng'),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('scan timed out')), 20000))
+    ]);
+    text = (result && result.data && result.data.text) || '';
+    confidence = Number((result && result.data && result.data.confidence) || 0);
+  } catch {
+    return fail;
+  }
+
+  return { miles: parseOdometer(text), confidence: Math.round(confidence) };
+}
+
+module.exports = { scanPayment, parseAmount, compare,
+                  scanOdometer, parseOdometer };

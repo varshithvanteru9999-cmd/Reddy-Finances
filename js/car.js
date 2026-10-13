@@ -142,7 +142,15 @@ function isoPlus(days) {
    because the server is the real authority. */
 function firstFreeWindow(carId, availableFrom, nights) {
   const ranges = bookedRanges(carId);
-  const day = ms => new Date(ms).toISOString().slice(0, 10);
+  /* Local, not UTC: these timestamps are local midnights, and
+     toISOString() would shift them back a day anywhere west of
+     Greenwich — offering a pick-up date one day earlier than the one
+     actually found to be free. */
+  const day = ms => {
+    const d = new Date(ms);
+    const p = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  };
   const DAY = 86400000;
 
   let start = new Date(isoPlus(1) + 'T00:00:00').getTime();
@@ -182,7 +190,13 @@ function pickupWindow() {
   const today = new Date();
   const last = new Date();
   last.setDate(last.getDate() + MAX_LEAD_DAYS);
-  const iso = d => d.toISOString().slice(0, 10);
+  /* Local, not UTC — see firstFreeWindow(). These become the calendar's
+     min and max, so a shift here lets someone pick a day the server
+     will refuse. */
+  const iso = d => {
+    const p = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  };
   return { min: iso(today), max: iso(last) };
 }
 
@@ -410,10 +424,10 @@ function bookingBlock(car) {
           <span class="pay-plus" aria-hidden="true">+</span>
           <span class="pay-text">
             <b id="payDropLabel">Upload payment screenshot</b>
-            <small>Required &middot; JPG or PNG</small>
           </span>
           <input type="file" id="bk-payment" accept="image/*" hidden>
         </label>
+        <small class="pay-hint">Required &middot; JPG or PNG</small>
       </div>` : ''}
       <button class="btn btn-red btn-block" type="submit"
               id="bookSubmit"${isPrebooking ? ' disabled' : ''}>Confirm booking</button>
@@ -429,6 +443,12 @@ function bookingBlock(car) {
    the wording and the client-side check. */
 const DEPOSIT_MIN = 100;
 
+/* Where the deposit is actually sent. Taken from ui.js's EMAIL when it
+   is loaded (it always is on this page) so the address lives in one
+   place; the literal is only a fallback if that ever changes. */
+const ZELLE_EMAIL = typeof EMAIL === 'string' && EMAIL
+  ? EMAIL : 'reddyfinancialsinc@gmail.com';
+
 /* The deposit step, shown when the customer confirms a booking.
 
    It is a dialog rather than another field on the form because it is a
@@ -441,6 +461,71 @@ let depositScan = null;
 /* Opens the deposit dialog and resolves with the accepted file, or
    null if the customer backs out. The caller awaits it, so the booking
    is only created once this has come back with a payment. */
+/* Shown the moment a viewing request goes through.
+
+   A popup rather than the line under the form: the form is hidden on
+   success, so the confirmation sat where the form used to be and was
+   easy to scroll past — and the number to call with it. A dialog has
+   to be dismissed, so it is read.
+
+   Built the same way as the deposit dialog above: appended to body,
+   closed by the button, the backdrop or Escape, and it restores the
+   page scroll on the way out. */
+function showViewingSent(carLabel) {
+  const host = document.createElement('div');
+  host.innerHTML = `
+    <div class="dep-backdrop" id="vrBackdrop" role="dialog" aria-modal="true"
+         aria-labelledby="vrTitle">
+      <div class="dep-modal vr-modal">
+        <button type="button" class="dep-close" id="vrClose"
+                aria-label="Close">&times;</button>
+
+        <div class="vr-tick" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 6 9 17l-5-5"/>
+          </svg>
+        </div>
+
+        <h3 class="dep-title" id="vrTitle">Your request has been sent</h3>
+        <p class="dep-lead">
+          Our team has received your viewing request${carLabel
+            ? ` for the <strong>${esc(carLabel)}</strong>` : ''}
+          and will contact you shortly.
+        </p>
+        <p class="vr-call">
+          For further details, call us on
+          <a href="${PHONE_HREF}">${PHONE}</a>
+        </p>
+
+        <div class="dep-actions vr-actions">
+          <button type="button" class="btn btn-red" id="vrDone">Done</button>
+        </div>
+      </div>
+    </div>`;
+
+  const backdrop = host.firstElementChild;
+  document.body.appendChild(backdrop);
+  document.body.style.overflow = 'hidden';
+
+  const close = () => {
+    document.body.style.overflow = '';
+    backdrop.remove();
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = e => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+
+  backdrop.querySelector('#vrClose').onclick = close;
+  backdrop.querySelector('#vrDone').onclick = close;
+  /* The backdrop closes; the card itself must not. */
+  backdrop.addEventListener('click', e => { if (e.target === backdrop) close(); });
+
+  /* Focus the dismiss button so the dialog is reachable from the
+     keyboard and a screen reader announces it. */
+  backdrop.querySelector('#vrDone').focus();
+}
+
 function askForDeposit() {
   return new Promise(resolve => {
     depositFile = null;
@@ -579,9 +664,12 @@ function depositModalHTML() {
 
         <h3 class="dep-title" id="depTitle">Secure your booking</h3>
         <p class="dep-lead">
-          Pay a deposit of at least <strong>$${DEPOSIT_MIN}</strong> to reserve
+          Pay a deposit of <strong>$${DEPOSIT_MIN}</strong> to reserve
           this car, then upload a screenshot of the payment below.
           The amount is deducted from your rental total.
+        </p>
+        <p class="dep-pay">
+          Pay via Zelle to <strong>${ZELLE_EMAIL}</strong>
         </p>
 
         <label class="dep-drop" id="depDrop">
@@ -615,11 +703,31 @@ function initBooking(car) {
   const msg = document.getElementById('bookMsg');
   const isRental = car.type === 'rental';
 
-  /* If this customer is already signed in (e.g. just returned from the
+  /* If this CUSTOMER is already signed in (e.g. just returned from the
      Google redirect), pre-fill their details so all they have to do is
-     confirm. */
+     confirm.
+
+     Only a customer. Two other identities can be signed in here and
+     neither is booking a car for themselves:
+
+       id 'admin'  the office account. Its name is the literal word
+                   "Administrator" and its address is the company
+                   mailbox, so staff opening a car page saw those sitting
+                   in "Your name" and "Email" looking exactly like
+                   default data left in the app — and a booking made
+                   without clearing them would be filed against the
+                   company instead of the customer.
+
+       id 'dev'    the OPEN_ADMIN stand-in on a local machine. Nobody
+                   is signed in at all; the server is just not asking.
+
+     Anything else is a real person signing in with their own address,
+     which is who this is for. */
+  const BOOKS_FOR_THEMSELVES = u =>
+    u && u.email && !u.admin && u.id !== 'admin' && u.id !== 'dev';
+
   const prefillIfSignedIn = () => {
-    if (!window.Auth || !Auth.user) return;
+    if (!window.Auth || !BOOKS_FOR_THEMSELVES(Auth.user)) return;
     const name = document.getElementById('bk-name');
     const email = document.getElementById('bk-email');
     if (name && !name.value && Auth.user.name) name.value = Auth.user.name;
@@ -648,10 +756,18 @@ function initBooking(car) {
     const refresh = debounce(renderQuote, 250);
 
     /* Helper: last day of the month containing `isoDate`. */
+    /* The last BILLABLE day of the pick-up month.
+
+       Open return bills to the end of the month, and the 31st is not a
+       billable day — so returning "31 October" named a date the invoice
+       would not charge for and the period did not cover. The 30th is
+       the day the billing actually runs to, so that is the date shown.
+       February and the 30-day months are unaffected. */
     function monthEnd(isoDate) {
       const [y, m] = isoDate.split('-').map(Number);
       const last = new Date(y, m, 0);  // day 0 = last day of previous month = last of m
-      return `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;
+      const day = Math.min(last.getDate(), 30);
+      return `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     }
 
     /* When open return is ticked: hide the return-date field and set it
@@ -669,24 +785,34 @@ function initBooking(car) {
       } else {
         wrap.hidden = false;
         if (fromEl.value) {
-          /* Billing prices a month as 30 days counted inclusively, so
-             the return date is pick-up + 29. Adding a flat 30 made every
-             booking 31 days and charged a day of rent on top of the
-             monthly rate — $498 became $514.60.
+          /* A month is 30 BILLABLE days, and the 31st of a month is not
+             billable — so the return date cannot be a flat pick-up + 29.
+             Whenever a 31st fell inside the span that day was skipped,
+             and the customer paid a full month's rent for 29 charged
+             days. Four bookings in ten span a 31st, so this was the
+             common case rather than an edge one.
 
-             Stepping by calendar month instead looks tidier but bills
-             worse: a 28-day February or a 31-day March is not 30 days,
-             and the engine charges per-day for anything that is not a
-             whole calendar month. */
-          const d = new Date(fromEl.value + 'T12:00:00');
-          d.setDate(d.getDate() + 29);
-          toEl.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+             returnDateFor() walks the calendar counting only billable
+             days. It lives in billing.js beside the rule itself, so the
+             form and the invoice cannot disagree about what a month is.
+             (Stepping by calendar month instead looks tidier but bills
+             worse: a 28-day February is not 30 days, and the engine
+             charges per-day for anything short of a whole month.) */
+          toEl.value = returnDateFor(fromEl.value);
         }
       }
     }
 
+    /* Changing the pick-up date moves the return date with it.
+
+       This only re-ran while OPEN RETURN was ticked, so in the ordinary
+       case the return date was computed once at page load and then left
+       behind: pick a different pick-up day and the return date stayed
+       on the old one, quietly making the term longer or shorter than a
+       month. syncReturnDate() handles both modes itself, so there is no
+       reason to gate the call. */
     document.getElementById('bk-from')?.addEventListener('change', () => {
-      if (document.getElementById('bk-open')?.checked) syncReturnDate();
+      syncReturnDate();
       refresh();
     });
     ['bk-from', 'bk-to'].forEach(id => {
@@ -741,18 +867,31 @@ function initBooking(car) {
     const email = document.getElementById('bk-email').value.trim();
     const phone = document.getElementById('bk-phone').value.trim();
     const license = (document.getElementById('bk-license')?.value || '').trim();
-    const from = document.getElementById('bk-from').value;
-    const to = document.getElementById('bk-to').value;
+    /* Optional-chained because the SALE form has no dates: it asks for a
+       name, an email and a phone number and nothing else.
+
+       These two were read unguarded, so on a car for sale the handler
+       threw "Cannot read properties of null" on its first line, before
+       any validation, message or request. The result was a "Request
+       viewing" button that did nothing at all — no error, no enquiry,
+       no sign that it had been pressed. */
+    const from = document.getElementById('bk-from')?.value || '';
+    const to = document.getElementById('bk-to')?.value || '';
     const openReturn = Boolean(document.getElementById('bk-open')?.checked);
 
     /* Booking stage gate — finish the booking only when signed in. */
     const user = await ensureSignedIn();
     if (!user) { /* user closed the login popup, stop here */ return; }
 
-    /* Pre-fill what Google gave us, so the request goes out under the
-       signed-in identity. */
-    if (!name && user.name) document.getElementById('bk-name').value = user.name;
-    if (!email && user.email) document.getElementById('bk-email').value = user.email;
+    /* Fall back to what Google gave us, so the request goes out under
+       the signed-in identity — but only for someone booking for
+       themselves. The office account and the local stand-in are not
+       customers: filling their details in here would file the booking
+       against the company rather than the person at the counter, and
+       it is also how "Administrator" appeared in the form. */
+    const self = BOOKS_FOR_THEMSELVES(user) ? user : {};
+    if (!name && self.name) document.getElementById('bk-name').value = self.name;
+    if (!email && self.email) document.getElementById('bk-email').value = self.email;
 
     /* Everything missing, gathered in one pass.
 
@@ -761,8 +900,12 @@ function initBooking(car) {
        next — three round trips to learn what the form wanted. Now
        every empty required field is named and marked together. */
     const missing = [];
-    if (!name && !user.name) missing.push(['bk-name', 'your name']);
-    if ((!email && !user.email) && !phone) {
+    /* Against `self`, not `user`: the office account has a name and an
+       address, but they are not the customer's, so they must not excuse
+       an empty field. Staff booking on someone's behalf are asked for
+       that person's details like anyone else. */
+    if (!name && !self.name) missing.push(['bk-name', 'your name']);
+    if ((!email && !self.email) && !phone) {
       missing.push(['bk-email', 'an email address or phone number']);
     }
     if (isRental) {
@@ -811,19 +954,25 @@ function initBooking(car) {
         }
       }
     } else {
-      if ((email || user.email) && !/^\S+@\S+\.\S+$/.test(email || user.email)) {
+      if ((email || self.email) && !/^\S+@\S+\.\S+$/.test(email || self.email)) {
         return fail('That email address does not look right.', 'bk-email');
       }
     }
 
-    const finalName = (name || user.name).trim();
-    /* A signed-in account's email wins over whatever is typed in the
+    const finalName = (name || self.name || '').trim();
+    /* A signed-in CUSTOMER's email wins over whatever is typed in the
        box. My Bookings finds a booking by the SESSION's email, so a
        customer who signed in as one address and typed another filed a
        booking they could never see: the redirect worked, the page came
        up empty, and the booking looked lost. The typed value is only
-       used when nobody is signed in. */
-    const finalEmail = (user.email || email).trim();
+       used when nobody is signed in.
+
+       `self` is empty for the office account, so a booking taken by
+       staff is filed under the address they typed — the customer's.
+       Using the session there would have put every such booking under
+       the company mailbox, where the customer could never see it and
+       the office would own them all. */
+    const finalEmail = (self.email || email).trim();
 
     /* The deposit gate. A pre-booking already collected its fee on the
        form above, so it is not asked twice; every other rental stops
@@ -846,7 +995,24 @@ function initBooking(car) {
     setBusy(true, 'Submitting…');
     try {
       if (isRental) {
-        const ref = await createBooking({ name: finalName, email: finalEmail, phone, license, carId: car.id, from, to, openReturn, status: 'Prebooked' });
+        /* POST /api/bookings answers with { id: "BK-1045" }, not the
+           bare reference. Taking the response as the reference made it
+           the STRING "[object Object]" everywhere it was used after
+           this: the deposit upload went to
+           /api/bookings/[object Object]/payment-proof and came back
+           400, so every screenshot was lost, and the customer was then
+           redirected to bookings.html?ref=[object Object].
+
+           The object is unwrapped here, and a string response is still
+           accepted so an older server shape cannot break it again. */
+        const created = await createBooking({
+          name: finalName, email: finalEmail, phone, license,
+          carId: car.id, from, to, openReturn, status: 'Prebooked'
+        });
+        const ref = typeof created === 'string'
+          ? created
+          : (created && (created.id || created.reference));
+        if (!ref) throw new Error('The booking was created but no reference came back.');
 
         /* The pre-booking fee screenshot, now that there is a reference
            to attach it to. A failure here must not lose the booking —
@@ -859,20 +1025,45 @@ function initBooking(car) {
               fr.onerror = () => reject(new Error('could not read the image'));
               fr.readAsDataURL(pendingPaymentFile);
             });
+            /* What the deposit dialog read off the screenshot, sent on
+               so the booking can record the amount claimed. Without it
+               the server has only the image, and the Deposit column has
+               nothing to show until someone opens the proof by hand. */
+            const claimed = depositScan && depositScan.amount != null
+              ? Number(depositScan.amount) : null;
+
             await uploadPaymentProof(ref, {
               name: pendingPaymentFile.name,
               type: pendingPaymentFile.type,
               size: pendingPaymentFile.size,
               data
-            }, { stage: 'prebooking', expected: carStatus(car.id).prebookingAmount || null });
+            }, {
+              stage: 'prebooking',
+              amount: claimed,
+              expected: carStatus(car.id).prebookingAmount || null
+            });
             pendingPaymentFile = null;
-          } catch {
-            ok(`Booking ${ref} created, but the payment screenshot did not ` +
-               `upload. You can add it from My Bookings.`);
+          } catch (err) {
+            /* The booking stands — it was created before this ran — but
+               the deposit the customer just paid has NOT been recorded.
+
+               This used to be announced with ok(), the green success
+               style, and the page redirected 2.6s later. A customer who
+               looked away saw "booking confirmed" and had no idea their
+               screenshot was gone; the office saw a booking with no
+               deposit and no sign one had been attempted. Both sides
+               lost the same information silently.
+
+               So: say it in the error style, name the reason, and give
+               them long enough to read it before moving on. */
+            fail(`Booking ${ref} is confirmed, but your payment screenshot ` +
+                 `could not be uploaded${err && err.message ? ' (' + err.message + ')' : ''}. ` +
+                 `Nothing is lost — open My Bookings and add it there, or ` +
+                 `send it to us and we will match it to ${ref}.`);
             form.hidden = true;
             setTimeout(() => {
               location.href = `bookings.html?ref=${encodeURIComponent(ref)}`;
-            }, 2600);
+            }, 7000);
             return;
           }
         }
@@ -890,7 +1081,28 @@ function initBooking(car) {
         await createEnquiry({
           kind: 'viewing', name: finalName, email: finalEmail, phone, carMake: `${car.year} ${car.name}`, message: `Viewing request for ${car.year} ${car.name}`
         });
-        ok(`Thanks${finalName ? ', ' + finalName : ''} — we will be in touch shortly about viewing the ${car.name}.`);
+        /* The office now has the request. Confirm it in a dialog, with
+           the number to call: a customer who has just asked to see a
+           car is the one most likely to want to speak to someone, and
+           waiting on a callback with no number to chase is where an
+           enquiry goes cold.
+
+           PHONE and PHONE_HREF come from ui.js, so the number is not
+           written down a second time here. */
+        const label = `${car.year} ${car.name}`;
+        showViewingSent(label);
+
+        /* The same confirmation stays on the page behind the dialog, so
+           dismissing it does not leave a blank panel where the form
+           was, and the number is still there to be read afterwards. */
+        const who = finalName ? ', ' + esc(finalName) : '';
+        okHTML(
+          `<strong>Thanks${who} — your viewing request has been sent.</strong><br>` +
+          `Our team has received it and will contact you shortly about the ` +
+          `${esc(label)}.<br>` +
+          `<span class="book-msg-call">For further details, call us on ` +
+          `<a href="${PHONE_HREF}">${PHONE}</a>.</span>`
+        );
         form.hidden = true;
       }
     } catch (err) {
@@ -900,14 +1112,38 @@ function initBooking(car) {
     }
   });
 
+  /* Busy state for the submit button.
+
+     The label has to be put BACK. This used to set the text on the way
+     in and never restore it: setBusy(false) is called with no `text`,
+     the `if (text)` guard skipped the assignment, and the button was
+     re-enabled still reading "Submitting…". After any failed attempt it
+     sat there saying it was submitting when it was not, so the form
+     looked stuck mid-submit however many times it was pressed.
+
+     The original wording is captured once, the first time it is needed,
+     because the two forms word it differently ("Confirm booking" on a
+     rental, "Request viewing" on a sale) and neither should be
+     hard-coded here. */
+  let idleLabel = null;
   function setBusy(busy, text) {
     const btn = form.querySelector('button[type="submit"]');
-    if (text) btn.textContent = text;
+    if (!btn) return;
+    if (idleLabel === null) idleLabel = btn.textContent;
+    btn.textContent = busy ? (text || idleLabel) : idleLabel;
     btn.disabled = busy;
   }
   function ok(text) {
     clearMarks();
     msg.textContent = text; msg.hidden = false; msg.classList.remove('err');
+  }
+
+  /* The same, for a message that has to carry a tappable phone link.
+     Only ever called with markup written here — never with anything a
+     customer typed, which would make this an injection route. */
+  function okHTML(html) {
+    clearMarks();
+    msg.innerHTML = html; msg.hidden = false; msg.classList.remove('err');
   }
 
   /* Every field previously marked wrong, cleared. Called before each
@@ -1107,7 +1343,13 @@ function debounce(fn, ms) {
   return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
 }
 function escAttr(v) { return esc(v).replace(/"/g, '&quot;'); }
-function money(n) { return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+/* money() deliberately NOT redefined here.
+
+   This file declared its own, always-two-decimals version. Loading
+   after ui.js, it replaced the shared one for the whole car page, so
+   the fleet grid said "$2,400" and the quote panel beside it said
+   "$2,400.00" for the same car. The shared one in ui.js now shows
+   cents only when a figure has them, which covers both uses. */
 
 /* Odometer readings are stored as a number; buyers read them with
    separators and a unit. Returns '' when there is no reading, so the

@@ -59,7 +59,13 @@ const FILES = [
   'migrate-016-referral.sql',
   'migrate-017-pickup-time.sql',
   'migrate-018-damage-photos.sql',
-  'migrate-019-pickup-location.sql'
+  'migrate-019-pickup-location.sql',
+  'migrate-020-auth-sessions.sql',
+  'migrate-021-vehicle-visibility.sql',
+  'migrate-022-booking-deposit.sql',
+  'migrate-023-document-templates.sql',
+  'migrate-024-booking-videos.sql',
+  'migrate-025-odometer-readings.sql'
 ];
 
 (async () => {

@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="manifest" href="/manifest.json">
+<!-- Staff sign-in belongs to the dashboard app, not the customer one, so
+     an install started here also opens the dashboard. -->
+<link rel="manifest" href="/admin-manifest.json">
 <meta name="theme-color" content="#0B0C0E">
 <link rel="apple-touch-icon" href="/images/icons/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -201,7 +203,8 @@
 <body>
 
 <div class="backdrop">
-  <video autoplay muted loop playsinline preload="auto">
+  <video autoplay muted loop playsinline preload="auto"
+         poster="images/hero/poster.png">
     <source src="images/video/city.webm" type="video/webm">
   </video>
 </div>

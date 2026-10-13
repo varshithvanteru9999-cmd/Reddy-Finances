@@ -12,6 +12,12 @@ const API = '/api';
 let FLEET = [];
 let API_OK = false;
 
+/* True when the fleet on screen came from a cache or the seed rather
+   than a live response. Pages check it so the office is told, instead of
+   quietly reading a list that is not current. */
+let STALE_FLEET = false;
+const isFleetStale = () => STALE_FLEET;
+
 async function request(path, options) {
   const res = await fetch(API + path, {
     headers: { 'Content-Type': 'application/json' },
@@ -27,13 +33,54 @@ async function request(path, options) {
 
 /* ------------------------------ fleet ---------------------------- */
 
-async function loadFleet() {
+/* Last fleet the server actually sent, kept so an offline reload shows
+   the same cars the last online visit did.
+
+   The bundled seed in js/data.js is NOT a safe fallback. It is a static
+   demo list with no visibility column, so falling back to it silently
+   re-published every car the office had deliberately hidden — the eye
+   toggle looked broken after a single dropped request or a 429. Only
+   reached when there is no saved copy at all, i.e. a first-ever visit
+   with no connection. */
+const FLEET_CACHE_KEY = 'reddy.fleet.v1';
+
+function readCachedFleet() {
   try {
-    const rows = await request('/vehicles');
+    const raw = localStorage.getItem(FLEET_CACHE_KEY);
+    const rows = raw ? JSON.parse(raw) : null;
+    return Array.isArray(rows) && rows.length ? rows : null;
+  } catch { return null; }
+}
+
+function writeCachedFleet(rows) {
+  try { localStorage.setItem(FLEET_CACHE_KEY, JSON.stringify(rows)); } catch {}
+}
+
+/* store.js is loaded by the customer site AND the dashboard, so the
+   fleet request has to say which it is serving.
+
+   The dashboard asks for hidden cars (?all=1) because a car hidden
+   from the site must still be findable there to be unhidden. The
+   customer site must never ask — and the server refuses anyway unless
+   the caller is an admin, so a crafted URL gains nothing. */
+async function loadFleet({ includeHidden = false } = {}) {
+  try {
+    const rows = await request('/vehicles' + (includeHidden ? '?all=1' : ''));
     API_OK = true;
+    writeCachedFleet(rows);
     return rows;
   } catch (err) {
+    const cached = readCachedFleet();
+    if (cached) {
+      /* Marked stale, not live: the list is right but a car published or
+         hidden since the last visit will not show until the API answers. */
+      API_OK = false;
+      STALE_FLEET = true;
+      console.warn('API unavailable, showing the last saved fleet:', err.message);
+      return cached;
+    }
     API_OK = false;
+    STALE_FLEET = true;
     console.warn('API unavailable, falling back to the bundled seed:', err.message);
     return CARS.map(c => ({ ...c }));
   }
@@ -42,6 +89,7 @@ async function loadFleet() {
 const createVehicle = car => request('/vehicles', { method: 'POST', body: JSON.stringify(car) });
 const updateVehicle = (id, car) => request(`/vehicles/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(car) });
 const deleteVehicleApi = id => request(`/vehicles/${encodeURIComponent(id)}`, { method: 'DELETE' });
+const toggleVehicleVisibility = id => request(`/vehicles/${encodeURIComponent(id)}/visibility`, { method: 'POST' });
 
 /* ---------------------------- bookings --------------------------- */
 

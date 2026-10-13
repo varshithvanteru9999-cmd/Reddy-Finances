@@ -33,3 +33,11 @@ live-backup-*.json
 # Working scratch
 conversations/
 .claude/
+
+# Commercial documents — the rate, the quoted total and the hours
+# behind it. This repository is public; what was charged for the work
+# is between us and the client.
+PROJECT-SCOPE-AND-COSTING.md
+DEVELOPMENT-AND-TIME-BREAKDOWN.md
+Reddy-Finances-Scope-and-Costing.pdf
+Reddy-Finances-Development-and-Time.pdf

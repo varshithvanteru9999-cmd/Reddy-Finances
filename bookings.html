@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Reddy Finances">
   <title>My Bookings — Reddy Finances</title>
-  <link rel="stylesheet" href="css/style.css?v=20260922f">
+  <link rel="stylesheet" href="css/style.css?v=20261013c">
   <script>
     // Apply theme early to prevent flash
     (function() {
@@ -152,6 +152,45 @@
     .pay-text b { display: block; font-size: 13px; }
     .pay-text small { display: block; margin-top: 2px; font-size: 11.5px; color: #6b7280; }
     .ph-count.pending-flag { background: #fee2e2; color: #991b1b; }
+
+    /* Payment already received — what the customer has done, confirmed
+       back to them. Green, because this is the reassuring half: the
+       money arrived. It sits ABOVE the upload control so the first
+       thing read is "we have it", not "send it". */
+    .pay-received {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 13px 15px; margin-top: 4px;
+      border: 1px solid rgba(15,122,74,.3); border-radius: 12px;
+      background: rgba(15,122,74,.06);
+    }
+    .pay-received-tick {
+      width: 26px; height: 26px; flex-shrink: 0;
+      display: grid; place-items: center;
+      border-radius: 50%; background: #0f7a4a; color: #fff;
+      font-size: 14px; line-height: 1;
+    }
+    .pay-received b { display: block; font-size: 13px; color: #0b5f39; }
+    .pay-received small { display: block; margin-top: 2px; font-size: 11.5px; color: #4b6b5c; }
+    .pay-received.is-checked { border-color: rgba(15,122,74,.5); }
+
+    /* With a receipt above it, adding another screenshot is a
+       correction rather than the expected next step, so the control
+       recedes instead of competing with it. */
+    .pay-drop.is-secondary {
+      margin-top: 8px; padding: 10px 14px;
+      border-style: solid; border-color: rgba(0,0,0,.1);
+      background: transparent;
+    }
+    .pay-drop.is-secondary .pay-plus {
+      width: 28px; height: 28px; font-size: 15px;
+      background: rgba(0,0,0,.05); color: #6b7280;
+    }
+    .pay-drop.is-secondary .pay-text b { font-size: 12px; font-weight: 600; color: #6b7280; }
+    .pay-drop.is-secondary .pay-text small { font-size: 11px; }
+    .pay-drop.is-secondary:hover {
+      border-color: var(--red,#DF0000); background: rgba(223,0,0,.03);
+    }
+    .pay-drop.is-secondary:hover .pay-text b { color: var(--red,#DF0000); }
 
     .booking-status {
       display: inline-flex;
@@ -453,6 +492,62 @@
     }
     .ph-box.busy { opacity: .55; pointer-events: none; }
 
+    /* ---- locked: confirmed, but not yet the pick-up day ----
+       The slots are shown so the customer knows what will be asked of
+       them, but they are plainly inert — no hover lift, no pointer,
+       and a dashed grey edge rather than the live box's red. */
+    /* A <button>, so it is tappable and reachable by keyboard: it has
+       something to say about why it is shut. The button defaults
+       (font, appearance) are reset so it still lays out as a .ph-box. */
+    button.ph-box {
+      font: inherit;
+      color: inherit;
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+    }
+    .ph-box.locked {
+      cursor: pointer;          /* it responds — it explains itself */
+      opacity: .5;
+      border-style: dashed;
+      border-color: var(--line, #d8d8dd);
+      background: rgba(128, 128, 136, .06);
+    }
+    /* A small lift on hover, so it reads as tappable rather than dead,
+       but no red: that colour means "ready for a photo" elsewhere. */
+    .ph-box.locked:hover {
+      opacity: .68;
+      transform: none;
+      border-color: var(--line, #c9c9d0);
+    }
+    .ph-box.locked:active { transform: scale(.98); }
+    .ph-box.locked:focus-visible {
+      outline: 2px solid var(--red, #DF0000);
+      outline-offset: 2px;
+    }
+    .ph-box.locked .ph-plus { font-size: 18px; }
+    .ph-box.locked:hover .ph-plus { color: inherit; }
+
+    .booking-photos.locked .ph-count {
+      background: transparent;
+      font-size: 17px;
+    }
+    /* Same pill as "Required", in a neutral tone: this step is still
+       coming, it is simply not open yet. */
+    .ph-locked {
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: rgba(128, 128, 136, .18);
+      color: var(--text-2, #6b6b73);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      vertical-align: middle;
+      margin-left: 6px;
+      white-space: nowrap;
+    }
+
     /* ---- rental duration tracker ---- */
     .rental-tracker {
       display: flex;
@@ -502,6 +597,240 @@
       .ph-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .ph-head { flex-direction: column; }
     }
+    /* ---- pick-up briefing dialog ----
+       What to bring and what to pay, shown once per booking. Numbered
+       rather than bulleted at the top level: there are exactly two
+       things to do and the order is the order they happen in. */
+    .pickup-backdrop {
+      position: fixed; inset: 0; z-index: 200;
+      display: grid; place-items: center;
+      padding: 20px;
+      background: rgba(10, 11, 13, .6);
+      backdrop-filter: blur(3px);
+      overflow-y: auto;
+    }
+    .pickup-backdrop[hidden] { display: none; }
+    .pickup-modal {
+      position: relative;
+      width: 100%; max-width: 480px;
+      max-height: calc(100vh - 40px);
+      overflow-y: auto;
+      padding: 26px 26px 22px;
+      border-radius: 16px;
+      background: var(--bg-primary, #fff);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, .3);
+    }
+    .pickup-close {
+      position: absolute; top: 12px; right: 14px;
+      width: 30px; height: 30px;
+      border: 0; border-radius: 50%;
+      background: transparent;
+      color: var(--text-muted, #6a6a70);
+      font-size: 22px; line-height: 1;
+      cursor: pointer;
+    }
+    .pickup-close:hover { color: var(--red, #DF0000); background: rgba(0,0,0,.05); }
+
+    .pickup-title {
+      margin: 0 0 4px;
+      font-family: var(--display, inherit);
+      font-size: 20px; line-height: 1.25;
+    }
+    .pickup-lead {
+      margin: 0 0 18px;
+      font-size: 13px; color: var(--text-muted, #6a6a70);
+    }
+
+    .pickup-block { margin-bottom: 18px; }
+    .pickup-block h4 {
+      display: flex; align-items: center; gap: 9px;
+      margin: 0 0 7px;
+      font-size: 14px;
+    }
+    .pickup-n {
+      flex: none;
+      width: 22px; height: 22px;
+      display: grid; place-items: center;
+      border-radius: 50%;
+      background: var(--red, #DF0000); color: #fff;
+      font-size: 11px; font-weight: 700;
+    }
+    .pickup-block > p {
+      margin: 0 0 8px;
+      font-size: 13px; line-height: 1.55;
+      color: var(--text-muted, #6a6a70);
+    }
+    .pickup-block > p b { color: var(--text-primary, #111); }
+
+    /* list-style is set explicitly: the page's reset strips markers
+       from every ul, and without them the two documents read as one
+       run-on sentence. */
+    .pickup-list { margin: 0; padding-left: 20px; list-style: disc outside; }
+    .pickup-list li {
+      margin-bottom: 5px;
+      list-style: inherit;
+      font-size: 13px; line-height: 1.5;
+      color: var(--text-muted, #6a6a70);
+    }
+    .pickup-list li::marker { color: var(--red, #DF0000); }
+    .pickup-list li b { color: var(--text-primary, #111); }
+
+    /* The two ways to pay, side by side so neither reads as the only
+       option — the office takes both. */
+    .pickup-pay {
+      margin-top: 10px;
+      border: 1px solid var(--border-color, rgba(0,0,0,.12));
+      border-radius: 11px;
+      overflow: hidden;
+    }
+    .pickup-pay-row {
+      display: flex; align-items: flex-start; gap: 11px;
+      padding: 12px 13px;
+      font-size: 12.5px; line-height: 1.5;
+      color: var(--text-muted, #6a6a70);
+    }
+    .pickup-pay-row + .pickup-pay-row {
+      border-top: 1px solid var(--border-color, rgba(0,0,0,.12));
+    }
+    .pickup-pay-row b { color: var(--text-primary, #111); word-break: break-word; }
+    .pickup-tag {
+      flex: none;
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-size: 9.5px; font-weight: 700;
+      letter-spacing: .1em; text-transform: uppercase;
+    }
+    .pickup-tag.online { background: rgba(223,0,0,.1); color: var(--red, #DF0000); }
+    .pickup-tag.cash   { background: rgba(15,122,74,.12); color: #0f7a4a; }
+
+    @media (max-width: 480px) {
+      .pickup-modal { padding: 22px 18px 18px; }
+      .pickup-pay-row { flex-direction: column; gap: 6px; }
+    }
+
+    /* The same checklist, kept on the card. Collapsed by default so a
+       card already carrying payment and photo steps does not grow a
+       wall of text the customer has read once. */
+    .collect-note {
+      grid-column: 1 / -1;
+      margin-top: 4px;
+      border: 1px solid var(--border-color, rgba(0,0,0,.12));
+      border-radius: 10px;
+      background: rgba(0, 0, 0, .015);
+    }
+    .collect-note summary {
+      padding: 11px 14px;
+      font-size: 12.5px; font-weight: 600;
+      color: var(--text-primary, #111);
+      cursor: pointer;
+      list-style: none;
+    }
+    .collect-note summary::-webkit-details-marker { display: none; }
+    .collect-note summary::before {
+      content: '+';
+      display: inline-block;
+      width: 15px;
+      color: var(--red, #DF0000);
+      font-weight: 700;
+    }
+    .collect-note[open] summary::before { content: '\2212'; }
+    .collect-note summary:hover { color: var(--red, #DF0000); }
+    .collect-body {
+      padding: 0 14px 13px 29px;
+      font-size: 12.5px; line-height: 1.55;
+      color: var(--text-muted, #6a6a70);
+    }
+    .collect-body p { margin: 0 0 7px; }
+    .collect-body p:last-child { margin-bottom: 0; }
+    .collect-body b { color: var(--text-primary, #111); }
+    .collect-body ul {
+      margin: 0 0 9px; padding-left: 18px;
+      list-style: disc outside;
+    }
+    .collect-body li { margin-bottom: 3px; list-style: inherit; }
+    .collect-body li::marker { color: var(--red, #DF0000); }
+
+    /* ---- optional walkaround video ----
+       Set apart from the photo grid above it with a rule, and labelled
+       Optional, so it never reads as a sixth required shot. */
+    .vid-block {
+      grid-column: 1 / -1;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px dashed var(--border-color, rgba(0,0,0,.14));
+    }
+    .vid-head { margin-bottom: 9px; }
+    .vid-head b { display: block; font-size: 13px; }
+    .vid-head small {
+      display: block; margin-top: 2px;
+      font-size: 11.5px; line-height: 1.45;
+      color: var(--text-muted, #6a6a70);
+    }
+    .vid-optional {
+      margin-left: 6px; padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(128,128,136,.16);
+      color: var(--text-muted, #6a6a70);
+      font-size: 9px; font-weight: 700;
+      letter-spacing: .12em; text-transform: uppercase;
+      vertical-align: middle;
+    }
+
+    .vid-drop {
+      display: flex; align-items: center; gap: 13px;
+      padding: 12px 14px;
+      border: 1px dashed rgba(0,0,0,.2); border-radius: 11px;
+      cursor: pointer;
+      transition: border-color .18s, background .18s;
+    }
+    .vid-drop:hover { border-color: var(--red,#DF0000); background: rgba(223,0,0,.03); }
+    .vid-drop.busy { opacity: .75; pointer-events: none; }
+    .vid-plus {
+      width: 34px; height: 34px; flex-shrink: 0;
+      display: grid; place-items: center;
+      border-radius: 50%; background: rgba(223,0,0,.08);
+      color: var(--red,#DF0000); font-size: 19px; line-height: 1;
+    }
+    .vid-text b { display: block; font-size: 12.5px; }
+    .vid-text small {
+      display: block; margin-top: 2px;
+      font-size: 11px; color: var(--text-muted,#6b7280);
+    }
+
+    .vid-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      gap: 10px; margin-bottom: 10px;
+    }
+    .vid-item {
+      margin: 0;
+      border: 1px solid var(--border-color, rgba(0,0,0,.12));
+      border-radius: 10px; overflow: hidden;
+      background: #000;
+    }
+    .vid-item video { display: block; width: 100%; aspect-ratio: 16/10; object-fit: cover; }
+    .vid-item figcaption {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; padding: 6px 9px;
+      background: var(--bg-primary, #fff);
+      font-size: 10.5px; color: var(--text-muted,#6a6a70);
+    }
+    .vid-del {
+      border: 0; background: transparent;
+      color: var(--text-muted,#9a9aa2);
+      font-size: 17px; line-height: 1; cursor: pointer;
+    }
+    .vid-del:hover { color: var(--red,#DF0000); }
+    .vid-note {
+      margin: 0; padding: 0 9px 8px;
+      background: var(--bg-primary, #fff);
+      font-size: 11px; line-height: 1.4;
+      color: var(--text-muted,#6a6a70);
+    }
+    .vid-full {
+      margin: 0; font-size: 11.5px;
+      color: var(--text-muted,#6a6a70);
+    }
   </style>
 </head>
 <body style="background: var(--bg-primary); min-height: 100vh;">
@@ -521,10 +850,61 @@
     </p>
   </main>
 
+  <!-- What the customer has to bring and pay on the day they collect.
+
+       Shown once per booking rather than on every visit: it is a
+       briefing, not a warning, and a dialog that reappears on each
+       load stops being read. The same points stay on the page under
+       "Collection checklist" so they can be re-read at any time. -->
+  <div class="pickup-backdrop" id="pickupInfo" hidden>
+    <div class="pickup-modal" role="dialog" aria-modal="true"
+         aria-labelledby="pickupTitle">
+      <button type="button" class="pickup-close" id="pickupClose"
+              aria-label="Close">&times;</button>
+
+      <h3 class="pickup-title" id="pickupTitle">Before you collect your car</h3>
+      <p class="pickup-lead">Two things to arrange before pick-up day.</p>
+
+      <div class="pickup-block">
+        <h4><span class="pickup-n">1</span> Bring these with you</h4>
+        <p>Please bring the following, in original:</p>
+        <ul class="pickup-list">
+          <li><b>Your driving licence</b></li>
+          <li><b>One address proof</b> &mdash; Aadhaar, passport, utility bill
+              or a recent bank statement</li>
+        </ul>
+      </div>
+
+      <div class="pickup-block">
+        <h4><span class="pickup-n">2</span> What to pay at pick-up</h4>
+        <p>The <b>first month's rent</b> and the <b>refundable advance</b> are
+           both due when you collect the vehicle.</p>
+
+        <div class="pickup-pay">
+          <div class="pickup-pay-row">
+            <span class="pickup-tag online">Online</span>
+            <span>Pay by Zelle to <b>reddyfinancialsinc@gmail.com</b>, then
+                  upload a screenshot using <b>Add payment screenshot</b> on
+                  this page.</span>
+          </div>
+          <div class="pickup-pay-row">
+            <span class="pickup-tag cash">In person</span>
+            <span>Pay by cash at the counter. Our team will record it against
+                  your booking.</span>
+          </div>
+        </div>
+      </div>
+
+      <button type="button" class="btn btn-red btn-block" id="pickupOk">
+        Got it
+      </button>
+    </div>
+  </div>
+
   <!-- plain scripts, same as every other page: these files export nothing -->
   <script src="js/data.js"></script>
   <script src="js/billing.js?v=20260921t"></script>
-  <script src="js/store.js?v=20260921t"></script>
+  <script src="js/store.js?v=20260930a"></script>
   <script src="js/ui.js?v=20260922f"></script>
   <script src="js/auth.js?v=20260923b"></script>
   <script src="js/notify.js"></script>
@@ -618,6 +998,17 @@
         { day: 'numeric', month: 'short', year: 'numeric' });
     };
 
+    /* A Date back to "YYYY-MM-DD" in LOCAL terms.
+
+       toISOString() cannot do this job: it converts to UTC first, so
+       local midnight on the 23rd comes back as the 22nd anywhere west
+       of Greenwich — and these dates are then shown to the customer or
+       used as a picker's minimum. */
+    const isoLocal = d => {
+      const p = n => String(n).padStart(2, '0');
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+    };
+
     async function renderBookings(email) {
       const list = document.getElementById('bookingsList');
       try {
@@ -642,9 +1033,22 @@
           const start = new Date(b.from + 'T00:00:00');
           const end = new Date(b.to + 'T00:00:00');
           const status = String(b.status || '').toLowerCase();
+
+          /* "On rent now" means the office has handed the car over —
+             which is what Active records. It used to mean only that the
+             pick-up DATE had passed, so a booking still waiting to be
+             approved appeared under "On rent now" the moment its date
+             came round: three unapproved requests sat there claiming
+             the customer had the car.
+
+             A request whose date has passed is not upcoming either, so
+             it stays with the other waiting bookings rather than being
+             filed away as though it had happened. */
+          const handedOver = status === 'active';
+
           if (status === 'completed' || status === 'cancelled' || end < today) past.push(b);
-          else if (start > today) upcoming.push(b);
-          else current.push(b);
+          else if (handedOver) current.push(b);
+          else upcoming.push(b);
         }
 
         const section = (title, items, note) => items.length ? `
@@ -675,6 +1079,10 @@
             setTimeout(() => card.classList.remove('just-booked'), 6000);
           }
         }
+
+        /* The pick-up briefing, for bookings that have not been
+           collected yet. */
+        maybeShowPickupInfo(bookings);
       } catch (err) {
         /* A failure here must not erase bookings already on screen.
            init() runs again after every photo or payment upload, so a
@@ -730,18 +1138,33 @@
       const canPay = isOpen;
       const canPhoto = isConfirmed;
 
+      /* Confirmed, but the car is not due to change hands yet.
+
+         A booking settled in cash is confirmed the moment the office
+         takes the money, which can be weeks before pick-up. The photo
+         step belongs to that customer either way, so it is shown —
+         but locked, with the date it opens, rather than hidden as if
+         it did not exist. The server enforces the same rule; this only
+         saves the customer a rejected upload. */
+      const pickupOn = new Date(b.from + 'T00:00:00');
+      pickupOn.setHours(0, 0, 0, 0);
+      const _now = new Date(); _now.setHours(0, 0, 0, 0);
+      const pickupDue = _now >= pickupOn;
+      const photosLocked = canPhoto && !pickupDue;
+
       const paymentSection = canPay ? paymentUploader(b) : '';
-      const photoSection = canPhoto ? photoUploader(b, 'pickup') : '';
-      const damageSection = canPhoto ? damageUploader(b) : '';
+      const photoSection = !canPhoto ? ''
+        : photosLocked ? lockedPhotoNotice(b, pickupOn)
+        : photoUploader(b, 'pickup');
+      /* Damage shots record what the car looked like at handover too,
+         so they wait for the same day. */
+      const damageSection = canPhoto && pickupDue ? damageUploader(b) : '';
 
       /* Return condition photos — always visible for confirmed/active. */
       const _today = new Date(); _today.setHours(0, 0, 0, 0);
-      const _started = new Date(b.from + 'T00:00:00') <= _today;
-      const _ended = new Date(b.to + 'T00:00:00') < _today;
       const returnOn = new Date((b.expectedReturnOn || b.to) + 'T00:00:00');
       returnOn.setHours(0, 0, 0, 0);
       const daysToReturn = Math.round((returnOn - _today) / 86400000);
-      const onRentNow = _started && !_ended;
       /* Notice comes before the return photos: it is the step that
          starts the handover, and the photos follow once a date is set. */
       const noticeSection = canPhoto ? returnNoticeBlock(b) : '';
@@ -753,8 +1176,9 @@
           })
         : '';
 
-      /* Rental duration tracker — compact bar between pickup/return photos */
-      const rentalTracker = canPhoto ? (() => {
+      /* Rental duration tracker — compact bar between pickup/return
+         photos. Nothing to track until the rental has actually begun. */
+      const rentalTracker = canPhoto && pickupDue ? (() => {
         const start = new Date(b.from + 'T00:00:00');
         const end = returnOn;
         const totalDays = Math.max(1, Math.round((end - start) / 86400000));
@@ -783,7 +1207,16 @@
         : isConfirmed ? {
           cls: 'ok',
           title: 'Slot booked — approved',
-          text: 'Your booking is confirmed. Upload the five vehicle photos below '
+          /* Paid at the counter, confirmed well before the car is due:
+             there is nothing to upload yet, so say when there will be
+             rather than asking for photos that cannot be taken. */
+          text: photosLocked
+            ? (b.paymentMethod === 'cash'
+                ? 'Your booking is confirmed and your cash payment is recorded. '
+                : 'Your booking is confirmed. ')
+              + 'The five vehicle photos open on your pick-up day, '
+              + prettyDate(b.from) + '.'
+            : 'Your booking is confirmed. Upload the five vehicle photos below '
               + 'before you collect the car.'
         }
         : underConfirmation ? {
@@ -792,12 +1225,19 @@
           text: 'Our team is reviewing your request. We will let you know shortly.'
         }
         : {
-          /* Booked, but not yet accepted by the office. The one useful
-             thing they can do now is pay — the photo steps open once
-             the booking is confirmed. */
+          /* Booked, but not yet accepted by the office.
+
+             What to say depends on whether they have paid. Asking a
+             customer who has JUST paid a deposit to "upload your
+             payment screenshot" tells them their money went nowhere —
+             which is how this read immediately after booking. */
           cls: 'wait',
           title: 'Booked — awaiting confirmation',
-          text: 'Your car is reserved. Upload your payment screenshot below '
+          text: (Number(b.bookingDeposit || 0) > 0 || Number(b.proofCount || 0) > 0)
+            ? 'Your car is reserved and we have your payment. Our team is '
+              + 'checking it now — the vehicle photo steps open once your '
+              + 'booking is accepted.'
+            : 'Your car is reserved. Upload your payment screenshot below '
               + 'so we can confirm it. The vehicle photo steps open once '
               + 'your booking is accepted.'
         };
@@ -807,16 +1247,43 @@
           <b>${esc(decision.title)}</b>${esc(decision.text)}
         </div>`;
 
+      /* The same points the pick-up dialog makes, kept on the card so
+         they can be re-read after it has been dismissed. Collapsed by
+         default: it is reference material, not a new instruction. */
+      const collectionNote = (status === 'Prebooked' || status === 'Confirmed') ? `
+        <details class="collect-note">
+          <summary>Collection checklist &mdash; what to bring and pay</summary>
+          <div class="collect-body">
+            <p><b>Bring with you, in original:</b></p>
+            <ul>
+              <li>Your driving licence</li>
+              <li>One address proof &mdash; Aadhaar, passport, utility bill
+                  or a recent bank statement</li>
+            </ul>
+            <p><b>Due at pick-up:</b> the first month's rent and the
+               refundable advance.</p>
+            <p><b>Paying online:</b> Zelle to
+               <b>reddyfinancialsinc@gmail.com</b>, then upload a screenshot
+               using <b>Add payment screenshot</b> above.<br>
+               <b>Paying in person:</b> cash at the counter &mdash; our team
+               records it against your booking.</p>
+          </div>
+        </details>` : '';
+
       /* The stamp across the photo: what state this booking is in, and
          the dates it covers — the same language the fleet cards use. */
       const today = new Date(); today.setHours(0, 0, 0, 0);
-      const started = new Date(b.from + 'T00:00:00') <= today;
       const ended = new Date(b.to + 'T00:00:00') < today;
 
       const stamp =
         status === 'Cancelled' ? ['past', 'Cancelled']
         : status === 'Completed' || ended ? ['past', 'Completed']
-        : status === 'Active' || started ? ['active', 'On rent']
+        /* Only a booking the office has actually handed over reads as
+           "On rent". `started` alone put that stamp on every request
+           whose pick-up date had merely arrived, so a car still sitting
+           on the forecourt — unapproved, never collected — was labelled
+           as being out with the customer. */
+        : status === 'Active' ? ['active', 'On rent']
         : underConfirmation ? ['under', 'Under confirmation']
         /* "Prebooked" is the office's word for a request awaiting a
            decision. The customer's car is simply booked, so the stamp
@@ -865,6 +1332,7 @@
              approved. The condition photos below only open up once the
              office has accepted. */''}
         ${paymentSection}
+        ${collectionNote}
         ${photoSection}
         ${damageSection}
         ${rentalTracker}
@@ -890,30 +1358,65 @@
        over a long rental, one per month, so this never "completes". */
     function paymentUploader(b) {
       const pending = Number(b.pending || 0);
+      const deposit = Number(b.bookingDeposit || 0);
+      const sent    = Number(b.proofCount || 0) > 0;
+      const checked = Boolean(b.paymentVerified);
+
+      /* What the customer has already done, said back to them.
+
+         This block used to open with "Paid by transfer? Upload a
+         screenshot here" on every booking — including one made seconds
+         earlier WITH a deposit and a screenshot already uploaded. The
+         customer paid, sent proof, was redirected here, and was asked
+         for the same thing again, which reads as the payment having
+         been lost. */
+      const receipt = deposit > 0 || sent ? `
+        <div class="pay-received${checked ? ' is-checked' : ''}">
+          <span class="pay-received-tick" aria-hidden="true">&#10003;</span>
+          <span>
+            <b>${deposit > 0
+                  ? esc(money(deposit)) + ' deposit received'
+                  : 'Payment screenshot received'}</b>
+            <small>${checked
+              ? 'Confirmed by our office.'
+              : 'We have your screenshot and will confirm it shortly.'}</small>
+          </span>
+        </div>` : '';
+
+      /* Once proof is in, uploading again is a correction, not the
+         expected next step — so it stops being the loud red call to
+         action and becomes a quiet line underneath. */
+      const uploader = `
+        <label class="pay-drop${receipt ? ' is-secondary' : ''}">
+          <span class="pay-plus" aria-hidden="true">+</span>
+          <span class="pay-text">
+            <b>${receipt ? 'Add another payment screenshot' : 'Add payment screenshot'}</b>
+            <small>JPG or PNG &middot; your bank or UPI confirmation</small>
+          </span>
+          <input type="file" accept="image/*" hidden
+                 onchange="uploadPayment('${esc(b.id)}', this)">
+        </label>`;
+
+      const note = pending > 0
+        ? `<b>${esc(money(pending))} outstanding.</b> Upload a screenshot of your transfer and the office will confirm it.`
+        : receipt
+          ? 'Nothing further is needed right now. The office will be in touch once your payment is confirmed.'
+          : 'Paid by transfer? Upload a screenshot here so the office can match it to your booking.';
 
       return `
         <div class="booking-photos payment-block">
           <div class="ph-head">
             <div>
               <h4>Payment</h4>
-              <p class="ph-note">${pending > 0
-                ? `<b>${esc(money(pending))} outstanding.</b> Upload a screenshot of your transfer and the office will confirm it.`
-                : "Paid by transfer? Upload a screenshot here so the office can match it to your booking."}</p>
+              <p class="ph-note">${note}</p>
             </div>
             ${pending > 0
               ? `<span class="ph-count pending-flag">${esc(money(pending))} due</span>`
               : ""}
           </div>
 
-          <label class="pay-drop">
-            <span class="pay-plus" aria-hidden="true">+</span>
-            <span class="pay-text">
-              <b>Add payment screenshot</b>
-              <small>JPG or PNG &middot; your bank or UPI confirmation</small>
-            </span>
-            <input type="file" accept="image/*" hidden
-                   onchange="uploadPayment('${esc(b.id)}', this)">
-          </label>
+          ${receipt}
+          ${uploader}
 
           <div class="pay-list" id="pay-${esc(b.id)}"></div>
         </div>`;
@@ -926,6 +1429,63 @@
        put it, so that evidence lived in a chat thread or nowhere. Each
        shot takes an optional note ("scratch on rear bumper") because a
        close-up of a panel means little on its own. */
+    /* The optional walkaround video, offered in each of the three
+       photo sections.
+
+       Compressed in the browser before it is sent: a phone clip is
+       often 30-60MB, which is slow on mobile data and large to store.
+       Downscaling to 720p and re-encoding typically brings a 30-second
+       walkaround to 2-4MB with no loss of what matters — a scratch is
+       still a scratch. Where the browser cannot do it (older Safari),
+       the original is sent instead, subject to the server's 25MB cap. */
+    function videoUploader(b, stage) {
+      const all = (b.videos || {})[stage] || [];
+      const limit = stage === 'damage' ? 5 : 2;
+      const full = all.length >= limit;
+
+      const list = all.length ? `
+        <div class="vid-list">
+          ${all.map(v => `
+            <figure class="vid-item">
+              <video src="/api/booking-image/${esc(v.src.split('/').pop())}"
+                     controls preload="metadata" playsinline></video>
+              <figcaption>
+                <span>${v.durationSecs ? esc(v.durationSecs) + 's · ' : ''}${
+                  v.bytes ? esc((v.bytes / 1048576).toFixed(1)) + ' MB' : ''}</span>
+                <button type="button" class="vid-del"
+                        title="Remove this video"
+                        onclick="deleteBookingVideo('${esc(b.id)}', ${Number(v.id)})"
+                        >&times;</button>
+              </figcaption>
+              ${v.note ? `<p class="vid-note">${esc(v.note)}</p>` : ''}
+            </figure>`).join('')}
+        </div>` : '';
+
+      return `
+        <div class="vid-block">
+          <div class="vid-head">
+            <b>Video <span class="vid-optional">Optional</span></b>
+            <small>${stage === 'damage'
+              ? 'A short clip of the damage often shows more than a photo.'
+              : 'A slow walk around the car. Large files are compressed automatically.'}</small>
+          </div>
+          ${list}
+          ${full ? `
+            <p class="vid-full">${limit} video${limit > 1 ? 's' : ''} uploaded —
+               remove one to add another.</p>`
+            : `
+            <label class="vid-drop">
+              <span class="vid-plus" aria-hidden="true">+</span>
+              <span class="vid-text">
+                <b>Add a video</b>
+                <small>MP4, MOV or WebM &middot; up to about a minute</small>
+              </span>
+              <input type="file" accept="video/*" hidden
+                     onchange="uploadBookingVideo('${esc(b.id)}','${esc(stage)}',this)">
+            </label>`}
+        </div>`;
+    }
+
     function damageUploader(b) {
       const shots = b.damagePhotos || [];
 
@@ -961,8 +1521,131 @@
             <input type="file" accept="image/*" hidden
                    onchange="uploadDamagePhoto('${esc(b.id)}', this)">
           </label>
+          ${videoUploader(b, 'damage')}
         </div>`;
     }
+
+    /* The photo step before pick-up day: present, explained, and shut.
+
+       It shows the same five slots so the customer knows what will be
+       asked of them, greyed out with the date they open. Hiding the
+       section instead would leave a cash customer — confirmed weeks
+       early, with no screenshot to upload — looking at a card that
+       asks nothing of them at all. */
+    function lockedPhotoNotice(b, pickupOn) {
+      /* b.from, not pickupOn.toISOString() — the Date is local midnight,
+         and toISOString shifts it into UTC, which lands on the previous
+         day anywhere west of Greenwich and advertises the wrong date. */
+      const when = prettyDate(b.from);
+      const days = Math.round((pickupOn - new Date().setHours(0, 0, 0, 0)) / 86400000);
+      const away = days === 1 ? 'tomorrow' : 'in ' + days + ' days';
+
+      return `
+        <div class="booking-photos locked">
+          <div class="ph-head">
+            <div>
+              <h4>Vehicle photos <span class="ph-locked">Opens ${esc(when)}</span></h4>
+              <p class="ph-note">These record the car's condition as you collect
+                 it, so they unlock on your pick-up day — ${esc(away)}. Take all
+                 five at the counter before you drive away.</p>
+            </div>
+            <span class="ph-count" aria-hidden="true">&#128274;</span>
+          </div>
+
+          <div class="ph-grid">
+            ${PHOTO_SLOTS.map(([id, label], i) => `
+              <button type="button" class="ph-box locked"
+                      onclick="explainPhotoLock('${esc(b.from)}')"
+                      title="Opens on your pick-up day">
+                <span class="ph-n">${i + 1}</span>
+                <span class="ph-plus" aria-hidden="true">&#128274;</span>
+                <span class="ph-label">${esc(label)}</span>
+              </button>`).join('')}
+          </div>
+        </div>`;
+    }
+
+    /* Tapping a locked box answers the obvious question.
+
+       A box that simply does nothing reads as broken — people tap it
+       again, then assume the site is at fault. The lock icon alone does
+       not say WHEN it opens, so say it plainly and let the message
+       clear itself. */
+    /* The pick-up briefing: what to bring, and what to pay on the day.
+
+       Shown once per booking, not once per visit. A dialog that opens
+       on every load is one people learn to dismiss without reading,
+       and this is the only place the ID requirement is stated — a
+       customer who turns up without their licence cannot collect the
+       car. Which bookings have been acknowledged is remembered in the
+       browser, so it is a convenience rather than a record: clearing
+       site data simply shows it again, which is harmless.
+
+       Only for bookings not yet collected. Once a rental is Active the
+       briefing has served its purpose, and a cancelled or completed
+       one has nothing to collect. */
+    const PICKUP_SEEN_KEY = 'reddy_pickup_briefed';
+
+    function pickupSeen() {
+      try { return JSON.parse(localStorage.getItem(PICKUP_SEEN_KEY) || '[]'); }
+      catch { return []; }
+    }
+    function markPickupSeen(refs) {
+      try {
+        const all = [...new Set([...pickupSeen(), ...refs])].slice(-40);
+        localStorage.setItem(PICKUP_SEEN_KEY, JSON.stringify(all));
+      } catch { /* private window or storage disabled — show it again */ }
+    }
+
+    let pickupPending = [];
+
+    function maybeShowPickupInfo(bookings) {
+      const seen = pickupSeen();
+      pickupPending = (bookings || [])
+        .filter(b => {
+          const s = String(b.status || '');
+          return s === 'Prebooked' || s === 'Confirmed';
+        })
+        .map(b => String(b.id))
+        .filter(ref => !seen.includes(ref));
+
+      if (!pickupPending.length) return;
+      const box = document.getElementById('pickupInfo');
+      if (box) box.hidden = false;
+    }
+
+    function closePickupInfo() {
+      const box = document.getElementById('pickupInfo');
+      if (box) box.hidden = true;
+      markPickupSeen(pickupPending);
+      pickupPending = [];
+    }
+
+    document.getElementById('pickupOk')?.addEventListener('click', closePickupInfo);
+    document.getElementById('pickupClose')?.addEventListener('click', closePickupInfo);
+    document.getElementById('pickupInfo')?.addEventListener('click', e => {
+      if (e.target.id === 'pickupInfo') closePickupInfo();
+    });
+    document.addEventListener('keydown', e => {
+      const box = document.getElementById('pickupInfo');
+      if (e.key === 'Escape' && box && !box.hidden) closePickupInfo();
+    });
+
+    window.explainPhotoLock = function (from) {
+      const when = prettyDate(from);
+      const pickup = new Date(from + 'T00:00:00'); pickup.setHours(0, 0, 0, 0);
+      const days = Math.round((pickup - new Date().setHours(0, 0, 0, 0)) / 86400000);
+      const away = days <= 0 ? '' : days === 1 ? ' — that is tomorrow.'
+                 : ' — that is in ' + days + ' days.';
+
+      showToast(
+        '<b>Photo uploads open on your pick-up date</b>' +
+        '<small class="auth-toast-hint">You can upload the five vehicle photos on '
+        + esc(when) + away + '</small>'
+      );
+      clearTimeout(window.__photoLockTimer);
+      window.__photoLockTimer = setTimeout(hideToast, 5000);
+    };
 
     function photoUploader(b, stage) {
       const photos = stage === 'return' ? (b.returnPhotos || {}) : (b.photos || {});
@@ -997,6 +1680,7 @@
               </label>`;
             }).join("")}
           </div>
+          ${videoUploader(b, stage)}
         </div>`;
     }
 
@@ -1031,7 +1715,7 @@
          submit and be rejected. */
       const soonest = new Date();
       soonest.setDate(soonest.getDate() + 10);
-      const minDate = soonest.toISOString().slice(0, 10);
+      const minDate = isoLocal(soonest);
 
       return `
         <div class="booking-photos notice-block">
@@ -1058,7 +1742,7 @@
       const photos = b.returnPhotos || {};
       const done = PHOTO_SLOTS.filter(([id]) => photos[id]).length;
       const all = done === PHOTO_SLOTS.length;
-      const when = prettyDate(returnOn.toISOString().slice(0, 10));
+      const when = prettyDate(isoLocal(returnOn));
 
       return `
         <div class="booking-photos" style="border-top:1px solid var(--red,#DF0000);">
@@ -1090,6 +1774,7 @@
               </label>`;
             }).join("")}
           </div>
+          ${videoUploader(b, 'return')}
         </div>`;
     }
 
@@ -1131,6 +1816,184 @@
         showToast(err.message || 'Could not record your notice');
         btn.disabled = false;
         btn.textContent = was;
+      }
+    };
+
+    /* ---- walkaround video: compress, then upload ----
+
+       Phones record at a bitrate meant for playback, not for sending:
+       a 30-second clip is routinely 40MB. Uploading that over mobile
+       data is slow and often fails outright, and it is wasteful to
+       store when the office only needs to see the car.
+
+       So the clip is re-encoded here first. The video is played into a
+       downscaled canvas and that canvas is recorded — the only route
+       a browser offers without shipping a transcoding library. It is
+       real-time (a 30-second clip takes about 30 seconds), so progress
+       is shown throughout.
+
+       Where MediaRecorder or captureStream is missing — older Safari,
+       mainly — the original is uploaded as-is and the server's 25MB
+       cap decides. Nothing is blocked on compression being available. */
+    const VIDEO_MAX_EDGE = 720;        /* long edge, pixels */
+    const VIDEO_BITRATE  = 1_200_000;  /* 1.2 Mbps — ample for 720p */
+    const VIDEO_MAX_SECS = 90;
+
+    function canCompressVideo() {
+      return typeof MediaRecorder !== 'undefined'
+        && typeof HTMLCanvasElement.prototype.captureStream === 'function'
+        && (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+            || MediaRecorder.isTypeSupported('video/webm'));
+    }
+
+    async function compressVideo(file, onProgress) {
+      const url = URL.createObjectURL(file);
+      try {
+        const v = document.createElement('video');
+        v.src = url; v.muted = true; v.playsInline = true;
+        await new Promise((ok, no) => {
+          v.onloadedmetadata = ok;
+          v.onerror = () => no(new Error('That video could not be read'));
+          setTimeout(() => no(new Error('That video took too long to open')), 20000);
+        });
+
+        if (v.duration && v.duration > VIDEO_MAX_SECS) {
+          throw new Error(`That video is ${Math.round(v.duration)}s long — `
+                        + `please keep it under ${VIDEO_MAX_SECS} seconds.`);
+        }
+
+        const scale = Math.min(1, VIDEO_MAX_EDGE / Math.max(v.videoWidth, v.videoHeight));
+        const c = document.createElement('canvas');
+        c.width  = Math.round(v.videoWidth  * scale / 2) * 2;   /* even dims */
+        c.height = Math.round(v.videoHeight * scale / 2) * 2;
+        const g = c.getContext('2d');
+
+        const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+          ? 'video/webm;codecs=vp9' : 'video/webm';
+        const rec = new MediaRecorder(c.captureStream(24), {
+          mimeType: mime, videoBitsPerSecond: VIDEO_BITRATE
+        });
+
+        const chunks = [];
+        rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+        const finished = new Promise(ok => { rec.onstop = ok; });
+
+        rec.start(250);
+        await v.play();
+        const tick = () => {
+          if (v.paused || v.ended) return;
+          g.drawImage(v, 0, 0, c.width, c.height);
+          if (onProgress && v.duration) {
+            onProgress(Math.min(99, Math.round(v.currentTime / v.duration * 100)));
+          }
+          requestAnimationFrame(tick);
+        };
+        tick();
+
+        await new Promise(ok => {
+          v.onended = ok;
+          /* a stall should not hang the page forever */
+          setTimeout(ok, (Math.min(v.duration || 30, VIDEO_MAX_SECS) + 5) * 1000);
+        });
+        v.pause();
+        rec.stop();
+        await finished;
+
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        if (!blob.size) throw new Error('The compressed video came out empty');
+        return { blob, name: 'walkaround.webm', type: 'video/webm',
+                 durationSecs: Math.round(v.duration || 0) };
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    window.uploadBookingVideo = async function(bookingRef, stage, input) {
+      if (!input.files || !input.files[0]) return;
+      const file = input.files[0];
+      input.value = '';
+
+      if (!/^video\//.test(file.type)) {
+        return showToast('That file is not a video.');
+      }
+      /* Before compression; the server cap applies to what is sent. */
+      if (file.size > 300e6) {
+        return showToast('That video is very large — please record a shorter clip.');
+      }
+
+      const drop = document.querySelector(
+        `.vid-block input[onchange*="'${bookingRef}','${stage}'"]`)?.closest('.vid-drop');
+      const label = drop ? drop.querySelector('b') : null;
+      const original = label ? label.textContent : '';
+      const say = t => { if (label) label.textContent = t; };
+      if (drop) drop.classList.add('busy');
+
+      try {
+        let payload;
+        if (canCompressVideo()) {
+          say('Compressing… 0%');
+          const out = await compressVideo(file, p => say('Compressing… ' + p + '%'));
+          payload = out;
+        } else {
+          /* No compression available — send what we were given. */
+          if (file.size > 25e6) {
+            throw new Error('That video is too large for this browser to send. '
+                          + 'Please record a shorter clip.');
+          }
+          payload = { blob: file, name: file.name, type: file.type, durationSecs: 0 };
+        }
+
+        say('Uploading…');
+        const data = await new Promise((ok, no) => {
+          const fr = new FileReader();
+          fr.onload = () => ok(String(fr.result).split(',')[1] || '');
+          fr.onerror = () => no(new Error('The video could not be read for upload'));
+          fr.readAsDataURL(payload.blob);
+        });
+
+        const res = await fetch(`/api/bookings/${encodeURIComponent(bookingRef)}/videos`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            stage,
+            file: { name: payload.name, type: payload.type,
+                    size: payload.blob.size, data },
+            durationSecs: payload.durationSecs,
+            originalBytes: file.size
+          })
+        });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(out.error || 'The video did not upload');
+
+        const saved = (payload.blob.size / 1048576).toFixed(1);
+        const was = (file.size / 1048576).toFixed(1);
+        showToast(`Video uploaded${was !== saved ? ` — ${was} MB compressed to ${saved} MB` : ''}`);
+        setTimeout(hideToast, 4500);
+        init();
+      } catch (err) {
+        say(original);
+        if (drop) drop.classList.remove('busy');
+        showToast(err.message || 'The video did not upload');
+        setTimeout(hideToast, 5000);
+      }
+    };
+
+    window.deleteBookingVideo = async function(bookingRef, videoId) {
+      if (!confirm('Remove this video?')) return;
+      try {
+        const res = await fetch(
+          `/api/bookings/${encodeURIComponent(bookingRef)}/videos/${Number(videoId)}`,
+          { method: 'DELETE' });
+        if (!res.ok) {
+          const e = await res.json().catch(() => ({}));
+          throw new Error(e.error || 'Could not remove that video');
+        }
+        showToast('Video removed');
+        setTimeout(hideToast, 3000);
+        init();
+      } catch (err) {
+        showToast(err.message);
+        setTimeout(hideToast, 4000);
       }
     };
 

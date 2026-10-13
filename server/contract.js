@@ -70,7 +70,27 @@ function contractTerms() {
 
 /* --------------------------- the document ------------------------- */
 
-async function generateContractPdf(data = {}, signature = null) {
+/* `template` is a saved version from document_templates — title, intro,
+   sections[] and acknowledgement in the same shape contract-terms.js
+   exports. Omitting it falls back to the file, so every existing caller
+   behaves exactly as before and a fresh install with no saved version
+   still produces the agreement. */
+async function generateContractPdf(data = {}, signature = null, template = null) {
+  const DOC = {
+    company: (template && template.company) || T.COMPANY,
+    tagline: (template && template.tagline != null) ? template.tagline : T.COMPANY_TAGLINE,
+    title: (template && template.title) || T.TITLE,
+    intro: (template && template.intro) || T.INTRO,
+    /* Labels + lookup keys only. The VALUES still come from the booking
+       at render time, so a template never carries a customer's data. */
+    detailFields: (template && Array.isArray(template.detailFields) && template.detailFields.length)
+      ? template.detailFields : T.DETAIL_FIELDS,
+    sections: (template && Array.isArray(template.sections) && template.sections.length)
+      ? template.sections : T.SECTIONS,
+    acknowledgement: (template && template.acknowledgement) || T.ACKNOWLEDGEMENT,
+    footer: (template && template.footer != null) ? template.footer : T.FOOTER
+  };
+
   const pdf = await PDFDocument.create();
   const font = await pdf.embedFont(StandardFonts.TimesRoman);
   const bold = await pdf.embedFont(StandardFonts.TimesRomanBold);
@@ -126,9 +146,9 @@ async function generateContractPdf(data = {}, signature = null) {
 
   /* ------------------------------ head ---------------------------- */
 
-  write(T.COMPANY.toUpperCase(), { size: 19, bold: true, lead: 1.15 });
+  write(DOC.company.toUpperCase(), { size: 19, bold: true, lead: 1.15 });
   y -= 1;
-  write(T.COMPANY_TAGLINE, { size: 7.6, color: MUTED, lead: 1.2, after: 4 });
+  write(DOC.tagline, { size: 7.6, color: MUTED, lead: 1.2, after: 4 });
 
   /* The double rule under the letterhead. */
   need(6);
@@ -140,15 +160,15 @@ async function generateContractPdf(data = {}, signature = null) {
   /* Centred title. */
   {
     const size = 13;
-    const w = bold.widthOfTextAtSize(ascii(T.TITLE), size);
+    const w = bold.widthOfTextAtSize(ascii(DOC.title), size);
     need(size * 1.6);
-    page.drawText(ascii(T.TITLE), {
+    page.drawText(ascii(DOC.title), {
       x: MARGIN + (BODY_W - w) / 2, y: y - size, size, font: bold, color: INK
     });
     y -= size * 1.7;
   }
 
-  write(T.INTRO, { size: 9.5, lead: 1.38, after: 10 });
+  write(DOC.intro, { size: 9.5, lead: 1.38, after: 10 });
 
   /* --------------------------- detail table ----------------------- */
 
@@ -235,10 +255,10 @@ async function generateContractPdf(data = {}, signature = null) {
   const COL = BODY_W / 2;
   const LABEL_W = 118;
 
-  need(T.DETAIL_FIELDS.length * ROW_H + 8);
+  need(DOC.detailFields.length * ROW_H + 8);
   const tableTop = y;
 
-  T.DETAIL_FIELDS.forEach((row, i) => {
+  DOC.detailFields.forEach((row, i) => {
     const rowY = tableTop - i * ROW_H;
 
     row.forEach((cell, side) => {
@@ -281,11 +301,11 @@ async function generateContractPdf(data = {}, signature = null) {
     });
   });
 
-  y = tableTop - T.DETAIL_FIELDS.length * ROW_H - 16;
+  y = tableTop - DOC.detailFields.length * ROW_H - 16;
 
   /* ---------------------------- sections -------------------------- */
 
-  T.SECTIONS.forEach((section, i) => {
+  DOC.sections.forEach((section, i) => {
     const headingSize = 9.6;
     /* Keep a heading with at least its first two lines. */
     need(headingSize * 1.6 + 30);
@@ -308,7 +328,7 @@ async function generateContractPdf(data = {}, signature = null) {
 
   need(140);
   rule(10, 0.8, INK);
-  write(T.ACKNOWLEDGEMENT, { size: 9.4, after: 22 });
+  write(DOC.acknowledgement, { size: 9.4, after: 22 });
 
   const signedName = ascii(
     (signature && (signature.typedName || signature.name)) ||
@@ -401,10 +421,10 @@ async function generateContractPdf(data = {}, signature = null) {
 
   {
     const size = 7.6;
-    const w = font.widthOfTextAtSize(ascii(T.FOOTER), size);
+    const w = font.widthOfTextAtSize(ascii(DOC.footer), size);
     need(26);
     rule(8, 0.6);
-    page.drawText(ascii(T.FOOTER), {
+    page.drawText(ascii(DOC.footer), {
       x: MARGIN + (BODY_W - w) / 2, y: y - size, size, font, color: MUTED
     });
   }

@@ -57,7 +57,10 @@ function invoiceModel(booking) {
      a $1,026.77 booking produced a $1,653.54 invoice.
 
      Anything the payments already account for is therefore dropped. */
-  const unpaidHere = Math.max(0, round2(rental + tolls + advance - paid));
+  /* The deposit is money received, not a charge: it is credited
+     alongside the payments rather than added to what is owed. */
+  const received = round2(paid + advance);
+  const unpaidHere = Math.max(0, round2(rental + tolls - received));
   const pending = round2(Math.max(0, storedPending - unpaidHere));
 
   const vehicle = [
@@ -85,8 +88,12 @@ function invoiceModel(booking) {
     paid,
     /* Rounded to the cent: adding four floats leaves drift like
        5167.780000000001, which would reach the printed invoice. */
-    total: round2(rental + tolls + advance + pending),
-    due: round2(Math.max(0, rental + tolls + advance + pending - paid)),
+    /* The deposit does not appear in the total — it is subtracted in
+       `due` as money already handed over. Adding it billed the
+       customer for their own deposit: a $500 rental with $100 down
+       invoiced $600 and still showed $500 outstanding. */
+    total: round2(rental + tolls + pending),
+    due: round2(Math.max(0, rental + tolls + pending - paid - advance)),
     /* Set only when this invoice bills part of the term: the month it
        covers and the days within it. A first month starting mid-month
        is billed for those days alone, and without naming the period the

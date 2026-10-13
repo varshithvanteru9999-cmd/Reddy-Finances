@@ -20,7 +20,7 @@
 <link rel="preload" as="script" href="/js/vendor/firebase-app-compat.js">
 <link rel="preload" as="script" href="/js/vendor/firebase-auth-compat.js">
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,500;1,600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260922f">
+<link rel="stylesheet" href="css/style.css?v=20261013d">
   <script>
     // Apply theme early to prevent flash
     (function() {
@@ -157,6 +157,7 @@
         <span class="eyebrow" id="resultCount" aria-live="polite"></span>
       </div>
 
+      <p class="fleet-stale" id="fleetStale" hidden></p>
       <div class="grid" id="grid"></div>
       <div class="fleet-more"><button class="link-rule" id="viewAll"></button></div>
     </div>
@@ -227,11 +228,11 @@
 
 <script src="js/data.js"></script>
 <script src="js/billing.js?v=20260921t"></script>
-<script src="js/store.js?v=20260921t"></script>
+<script src="js/store.js?v=20260930a"></script>
 <script src="js/ui.js?v=20260922f"></script>
 <script src="js/notify.js"></script>
 <script src="js/auth.js?v=20260923b"></script>
-<script src="js/app.js?v=20260921t"></script>
+<script src="js/app.js?v=20261013d"></script>
 <script>
   /* Registers the service worker so the site is installable and opens
      without a connection. Failure is non-fatal: the site works without it. */

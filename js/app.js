@@ -110,13 +110,24 @@ function initVideo() {
 
 /* ============================= RESERVE ============================ */
 
-const cities = () => [...new Set(FLEET.map(c => c.location))].sort();
-const HOME_CITY = 'Dallas, TX';
+/* Where customers collect from. Shown on the reserve panel as a plain
+   label rather than a choice: the office runs from one location, and
+   the city dropdown that used to sit here was built from whatever had
+   been typed into each vehicle record — so it offered a dozen cities
+   the business does not operate in. */
+const PICKUP_CITY = 'Irving';
 
+/* A date N days from today, as YYYY-MM-DD in LOCAL terms.
+
+   toISOString() converts to UTC first, so local midnight comes back as
+   the previous day anywhere west of Greenwich — the panel would offer
+   a pick-up date a day earlier than intended for most of the day in
+   Texas. */
 function isoDate(offsetDays) {
   const d = new Date();
   d.setDate(d.getDate() + offsetDays);
-  return d.toISOString().slice(0, 10);
+  const p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
 }
 
 function renderFields(mode) {
@@ -125,17 +136,19 @@ function renderFields(mode) {
   const note = document.getElementById('reserveNote');
 
   const isRental = mode === 'rental';
-  const cityOptions = [HOME_CITY, ...cities().filter(c => c !== HOME_CITY)];
 
   wrap.innerHTML = `
     <div class="field">
       <label for="f-loc">Pick-up location</label>
-      <div class="field-box">${ICON.pin}
-        <select id="f-loc">
-          <option value="any">Any city</option>
-          ${cityOptions.map(c => `<option value="${c}">${c}</option>`).join('')}
-        </select>
-        <span class="chev">${ICON.chev}</span>
+      ${/* The office operates from one location, so this states where
+           the cars are rather than offering a choice. The value stays
+           "any" so nothing is filtered out: the city list came from
+           whatever was typed into each vehicle record, and filtering on
+           a city no vehicle is recorded against would return an empty
+           fleet. Should a second location open, this goes back to a
+           <select>. */''}
+      <div class="field-box static-field">${ICON.pin}
+        <span id="f-loc" data-value="any">${esc(PICKUP_CITY)}</span>
       </div>
     </div>
     <div class="field">
@@ -144,7 +157,15 @@ function renderFields(mode) {
     </div>
     <div class="field">
       <label for="f-to">${isRental ? 'Return date' : 'Viewing by'}</label>
-      <div class="field-box date-box">${ICON.cal}<input id="f-to" type="date" value="${isoDate(4)}"></div>
+      ${/* A rental runs for a month minimum, so the default return date
+           has to clear it. This offered four days for both modes: a
+           customer who searched with the dates already in the boxes,
+           picked a car and pressed Confirm was told rentals run for at
+           least 30 days — rejected by the form for using the figures
+           the site itself had filled in. A viewing is not a rental, so
+           the sale side keeps its short window. */''}
+      <div class="field-box date-box">${ICON.cal}<input id="f-to" type="date"
+           value="${isRental ? isoDate(31) : isoDate(4)}"></div>
     </div>
     <div class="field">
       <label for="f-type">Vehicle type</label>
@@ -158,7 +179,10 @@ function renderFields(mode) {
     </div>`;
 
   btn.textContent = isRental ? 'Search rentals' : 'Search cars for sale';
-  note.textContent = `No hidden fees · Insurance options · Book any date, we confirm by email`;
+  /* "Insurance options" was removed: the agreement requires the driver
+     to carry their own cover, so offering options here promised
+     something the business does not sell. */
+  note.textContent = `No hidden fees · Book any date, we confirm by email`;
 
   wrap.querySelectorAll('.date-box').forEach(box => {
     const input = box.querySelector('input[type="date"]');
@@ -196,7 +220,10 @@ function initReserve() {
 
     const loc = document.getElementById('f-loc');
     const type = document.getElementById('f-type');
-    activeCity = loc ? loc.value : 'any';
+    /* The location is a fixed label now, not a <select>, so it carries
+       its value in a data attribute. `.value` is still read first so a
+       future <select> works without touching this. */
+    activeCity = loc ? (loc.value || loc.dataset.value || 'any') : 'any';
     activeCategory = type && type.value !== 'any' ? type.value : null;
 
     setType(mode, filterWrap.querySelector(`[data-filter="${mode}"]`));
@@ -291,6 +318,18 @@ function render() {
   const all = FLEET.filter(matches);
   const list = expanded ? all : getMixedList(all);
 
+  /* Say so when the list is not live. Without this the page renders a
+     fleet that looks authoritative but may predate the newest change —
+     a car published or hidden by the office after the last successful
+     load simply would not be there, with nothing to explain why. */
+  const stale = typeof isFleetStale === 'function' && isFleetStale();
+  const warn = document.getElementById('fleetStale');
+  if (warn) {
+    warn.hidden = !stale;
+    if (stale) warn.textContent =
+      'Showing the last saved fleet — we could not reach the server, so this list may be out of date.';
+  }
+
   grid.innerHTML = list.length
     ? list.map(cardHTML).join('')
     : `<div class="empty">No vehicles match that combination</div>`;
@@ -351,8 +390,9 @@ document.addEventListener('click', e => {
 
 /* ============================== BOOT ============================== */
 
-/* The consultation form has no backend, so acknowledge and reset rather
-   than letting the browser navigate away. */
+/* The consultation request, filed as an enquiry for the office to
+   follow up. (It once had no backend and only acknowledged the
+   submission; it now posts to /api/enquiries.) */
 function initConsult() {
   const form = document.getElementById('consultForm');
   const note = document.getElementById('consultNote');
@@ -362,14 +402,23 @@ function initConsult() {
     e.preventDefault();
     const name = document.getElementById('c-name').value.trim();
     const phone = document.getElementById('c-phone').value.trim();
+    const mail = document.getElementById('c-mail').value.trim();
     if (!validUSPhone(phone)) {
       note.textContent = 'Please enter a valid 10-digit US phone number, e.g. (214) 555-0134.';
+      return;
+    }
+    /* The address was collected and sent without ever being checked, so
+       a typo became an enquiry the office could not reply to. Blank is
+       still allowed — the phone number is the required contact — but a
+       typed address has to look like one. */
+    if (mail && !/^\S+@\S+\.\S+$/.test(mail)) {
+      note.textContent = 'That email address does not look right — check it, or leave it blank.';
       return;
     }
     const payload = {
       kind: 'consultation',
       name,
-      email: document.getElementById('c-mail').value.trim(),
+      email: mail,
       phone: usPhone(phone)
     };
     note.textContent = 'Sending…';

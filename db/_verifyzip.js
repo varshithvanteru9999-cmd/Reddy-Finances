@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------
    Check what is actually inside the deployment zip.
 
-     node db/_verifyzip.js hostinger-deploy.zip
+     node db/_verifyzip.js deploy-all.zip
 
    Reads the central directory rather than shelling out, so the answer
    does not depend on shell quoting. Confirms the files the server needs
@@ -10,7 +10,7 @@
 
 const fs = require('fs');
 
-const zipPath = process.argv[2] || 'hostinger-deploy.zip';
+const zipPath = process.argv[2] || 'deploy-all.zip';
 const buf = fs.readFileSync(zipPath);
 
 const names = [];

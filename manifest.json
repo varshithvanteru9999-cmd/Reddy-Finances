@@ -2,6 +2,7 @@
   "name": "Reddy Finances — Car Rental & Sales",
   "short_name": "Reddy Finances",
   "description": "Rent or buy a car in Dallas, Texas. Manage your bookings and documents.",
+  "id": "/index.html",
   "start_url": "/index.html",
   "scope": "/",
   "display": "standalone",

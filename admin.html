@@ -3,7 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="manifest" href="/manifest.json">
+<!-- The admin manifest, not the customer one. Installing from this page
+     must give an icon that opens the dashboard; /manifest.json starts at
+     /index.html, so it installed the customer site instead. -->
+<link rel="manifest" href="/admin-manifest.json">
 <meta name="theme-color" content="#0B0C0E">
 <link rel="apple-touch-icon" href="/images/icons/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -13,13 +16,17 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,500;1,600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/admin.css?v=20260921v">
+<link rel="stylesheet" href="css/admin.css?v=20261013b">
 </head>
 <body>
 
-<!-- city clip, fixed so it covers the page top to bottom -->
+<!-- city clip, fixed so it covers the page top to bottom.
+     The poster carries the panel on its own: the clip is WebM only, so
+     Safari before 16 shows the still instead, and the backdrop is
+     decorative — nothing here depends on it moving. -->
 <div class="backdrop">
-  <video autoplay muted loop playsinline preload="auto">
+  <video autoplay muted loop playsinline preload="auto"
+         poster="images/hero/poster.png">
     <source src="images/video/city.webm" type="video/webm">
   </video>
 </div>
@@ -39,6 +46,10 @@
       <button class="tab" role="tab" data-tab="pending"  aria-selected="false">Pending list</button>
       <button class="tab" role="tab" data-tab="photos"   aria-selected="false">Photos</button>
       <button class="tab" role="tab" data-tab="actions"  aria-selected="false">Actions</button>
+      <button class="tab" role="tab" data-tab="document" aria-selected="false">Document</button>
+      <button class="tab" role="tab" data-tab="enquiries" aria-selected="false">
+        Enquiries<span class="tab-badge" id="enqBadge" hidden></span>
+      </button>
     </nav>
 
     <div class="admin-actions">
@@ -88,6 +99,30 @@
           </figcaption>
           <ul class="timeline" id="timeline"></ul>
         </section>
+
+        <!-- Miles driven, read from the odometer photos the customer
+             uploads at pickup and return. Readings the office has not
+             checked are marked, because a dashboard photo is a hard
+             read and the figure is only a suggestion until confirmed. -->
+        <section class="card viz-wide">
+          <figcaption>
+            <h3>Miles tracker</h3>
+            <p>Taken from the odometer photos at pick-up and return.
+               Click any reading to correct it.</p>
+          </figcaption>
+          <div class="miles-sum" id="milesSummary"></div>
+          <div class="table-wrap">
+            <table class="data-table miles-table">
+              <thead>
+                <tr>
+                  <th>Ref</th><th>Customer</th><th>Vehicle</th>
+                  <th>Pick-up</th><th>Return</th><th>Miles driven</th>
+                </tr>
+              </thead>
+              <tbody id="milesRows"></tbody>
+            </table>
+          </div>
+        </section>
       </div>
     </section>
 
@@ -128,7 +163,7 @@
           <thead>
             <tr>
               <th>Vehicle</th><th>Type</th><th>Category</th>
-              <th>Price</th><th>Location</th><th>Odometer</th><th>Actions</th>
+              <th>Price</th><th>Location</th><th>Odometer</th><th>Visible</th><th>Actions</th>
             </tr>
           </thead>
           <tbody id="fleetRows"></tbody>
@@ -187,7 +222,7 @@
           <thead>
             <tr>
               <th>Ref</th><th>Customer</th><th>Contact</th><th>License</th><th>Vehicle</th>
-              <th>From</th><th>To</th><th>Days</th><th>Rental</th><th>Tolls</th><th>Total</th><th>Paid</th><th>Pending</th>
+              <th>From</th><th>To</th><th>Days</th><th>Rental</th><th>Tolls</th><th>Total</th><th>Paid</th><th>Pre-book fee</th><th>Pending</th>
               <th>Month</th><th>Status</th><th>Actions</th>
             </tr>
           </thead>
@@ -285,6 +320,130 @@
       </div>
     </section>
 
+    <!-- The rental agreement itself: edited here, versioned, and sent
+         from the Actions tab. Every saved version is kept because an
+         agreement already signed has to stay readable as it was. -->
+    <section id="panel-document" role="tabpanel" hidden>
+      <div class="panel-head">
+        <div>
+          <h2>Rental Document</h2>
+          <p>The agreement customers are asked to sign. Edit it here and save
+             a new version — the version marked <b>In use</b> is the one sent
+             unless you pick another. Nothing is overwritten, so a contract
+             already sent keeps its original wording.</p>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-line btn-sm" id="docUploadBtn">Upload a file</button>
+          <button class="btn btn-line btn-sm" id="docPreviewBtn">Preview PDF</button>
+          <button class="btn btn-red btn-sm" id="docSaveBtn">Save as new version</button>
+          <!-- No accept list on purpose: the office uploads whatever the
+               agreement arrives in and the server decides if it can read it. -->
+          <input type="file" id="docUploadInput" hidden>
+        </div>
+      </div>
+
+      <div class="doc-layout">
+        <!-- The editor -->
+        <div class="doc-editor">
+          <div class="doc-row2">
+            <label class="doc-field">
+              <span>Company name <small>(letterhead)</small></span>
+              <input type="text" id="docCompany" maxlength="120"
+                     placeholder="Reddy Financial">
+            </label>
+            <label class="doc-field">
+              <span>Tagline</span>
+              <input type="text" id="docTagline" maxlength="160"
+                     placeholder="VEHICLE LEASING &amp; RENTAL SERVICES">
+            </label>
+          </div>
+
+          <label class="doc-field">
+            <span>Document title</span>
+            <input type="text" id="docTitle" maxlength="200"
+                   placeholder="MONTHLY VEHICLE RENTAL AGREEMENT">
+          </label>
+
+          <label class="doc-field">
+            <span>Introduction</span>
+            <textarea id="docIntro" rows="4"
+                      placeholder="The opening paragraph of the agreement."></textarea>
+          </label>
+
+          <!-- The table at the head of the document. Only the LABELS are
+               editable: the value beside each one is filled from the
+               booking when the contract is sent, so no customer's data
+               is ever stored in the template. -->
+          <div class="doc-sections-head">
+            <span>Detail table <small>— labels only; values fill per customer</small></span>
+            <button type="button" class="btn btn-line btn-sm" id="docAddField">
+              Add a row
+            </button>
+          </div>
+          <div id="docFields" class="doc-fields"></div>
+
+          <div class="doc-sections-head">
+            <span>Clauses</span>
+            <button type="button" class="btn btn-line btn-sm" id="docAddSection">
+              Add a clause
+            </button>
+          </div>
+          <div id="docSections"></div>
+
+          <label class="doc-field">
+            <span>Acknowledgement <small>(above the signature line)</small></span>
+            <textarea id="docAck" rows="3"
+                      placeholder="The line the driver signs beneath."></textarea>
+          </label>
+
+          <label class="doc-field">
+            <span>Page footer</span>
+            <input type="text" id="docFooter" maxlength="300"
+                   placeholder="Reddy Financial - email - business hours">
+          </label>
+
+          <label class="doc-field">
+            <span>What changed <small>(saved with the version)</small></span>
+            <input type="text" id="docNote" maxlength="300"
+                   placeholder="e.g. Raised the toll admin fee to $25">
+          </label>
+        </div>
+
+        <!-- Version history, newest first -->
+        <aside class="doc-versions">
+          <h3>Versions</h3>
+          <p class="doc-versions-note">Newest first. Choose one to load it into
+             the editor, or set it as the version sent to customers.</p>
+          <div id="docVersionList" class="doc-version-list"></div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- Viewing requests and other enquiries from the customer site.
+         These were being written to the database and never read back,
+         so a request to view a car for sale reached no one. -->
+    <section id="panel-enquiries" role="tabpanel" hidden>
+      <div class="panel-head">
+        <div>
+          <h2>Enquiries</h2>
+          <p>Viewing requests and messages from the website. Outstanding ones
+             are listed first — tick one off once the customer has been
+             contacted.</p>
+        </div>
+        <div class="head-actions">
+          <select id="enqFilter" class="input-sm" aria-label="Filter by type">
+            <option value="">All types</option>
+            <option value="viewing">Viewing requests</option>
+            <option value="consultation">Consultations</option>
+            <option value="sell">Selling a car</option>
+            <option value="general">General</option>
+          </select>
+          <button class="btn btn-line btn-sm" id="enqReload" type="button">Refresh</button>
+        </div>
+      </div>
+      <div id="enqList" class="enq-list"></div>
+    </section>
+
     <section id="panel-photos" role="tabpanel" hidden>
       <div class="panel-head">
         <div>
@@ -318,7 +477,7 @@
           <thead>
             <tr>
               <th>Ref</th><th>Customer</th><th>Contact</th><th>License</th>
-              <th>Vehicle</th><th>Dates</th><th>Pickup</th><th>Return</th><th>Damage</th><th>Agreement</th>
+              <th>Vehicle</th><th>Dates</th><th>Pickup</th><th>Return</th><th>Damage</th><th>Video</th><th>Agreement</th>
               <th>View</th>
             </tr>
           </thead>
@@ -361,8 +520,8 @@
           <thead>
             <tr>
               <th>Ref</th><th>Type</th><th>Customer</th><th>Contact</th><th>License</th>
-              <th>Vehicle</th><th>From</th><th>To</th><th>Advance</th><th>Total</th>
-              <th>Paid</th><th>Pending</th><th>Status</th>
+    <th>Vehicle</th><th>From</th><th>To</th><th>Deposit</th><th>Total</th>
+    <th>Paid</th><th>Pre-book fee</th><th>Pending</th><th>Status</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -422,7 +581,7 @@
 <script src="js/store.js"></script>
 <script src="js/charts.js"></script>
 <script src="js/notify.js"></script>
-<script src="js/admin.js?v=20260922e"></script>
+<script src="js/admin.js?v=20261013b"></script>
 <script>
   /* Registers the service worker so the site is installable and opens
      without a connection. Failure is non-fatal: the site works without it.
