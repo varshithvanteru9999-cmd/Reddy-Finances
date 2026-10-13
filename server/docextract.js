@@ -27,6 +27,43 @@ function fromText(buf) {
   return buf.toString('utf8');
 }
 
+/* Is this really text, or binary being decoded as if it were?
+
+   The reader above is the fallback for anything whose signature was not
+   recognised, and it will happily turn a random file into mojibake. A
+   .docx saved by an unusual tool, or a format we do not sniff, must
+   still be readable — but a bitmap, an archive or a truncated upload
+   must not fill the editor with replacement characters for the office
+   to notice and undo by hand.
+
+   Two signals, both cheap and both about the DECODED text:
+
+     - NUL bytes. No plain-text document contains them; almost every
+       binary format does.
+     - the proportion of characters that survived decoding. Binary read
+       as UTF-8 produces U+FFFD, the replacement character, and control
+       bytes. Real prose is overwhelmingly printable.
+
+   Measured on a sample rather than the whole file, because a 15MB
+   upload should not be walked twice to answer one question. */
+function looksLikeText(buf) {
+  const sample = buf.length > 8192 ? buf.subarray(0, 8192) : buf;
+  if (sample.includes(0)) return false;
+
+  const text = sample.toString('utf8');
+  if (!text.length) return false;
+
+  let good = 0;
+  for (const ch of text) {
+    const c = ch.codePointAt(0);
+    /* printable, or the whitespace a document legitimately contains */
+    if (c === 9 || c === 10 || c === 13 || (c >= 32 && c !== 0xFFFD)) good++;
+  }
+  /* 85%: generous enough for an unusual encoding or a stray control
+     character, strict enough that decoded binary never passes. */
+  return good / text.length >= 0.85;
+}
+
 /* ------------------------------ .docx ------------------------------
    A Word file is a ZIP; the body lives in word/document.xml. Read the
    archive's central directory, inflate that one entry, and strip the
@@ -257,6 +294,16 @@ function extractText(buf, name = '') {
                       + 'rather than text. Upload the document itself as PDF, '
                       + 'Word or plain text.' };
       default: {
+        /* Checked BEFORE decoding is trusted. This branch is the
+           fallback for an unrecognised signature, so it is where a
+           bitmap, an archive or a truncated upload ends up; without
+           this they were decoded as UTF-8 and the editor was filled
+           with mojibake for the office to notice and undo by hand. */
+        if (!looksLikeText(buf)) {
+          return { ok: false, format: 'Unknown', text: '',
+                   error: 'That file is not a document we can read. Upload '
+                        + 'it as PDF, Word (.docx), RTF or plain text.' };
+        }
         const text = fromText(buf);
         return text.trim()
           ? { ok: true, format: 'Text', text }
