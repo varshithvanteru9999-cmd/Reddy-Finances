@@ -1193,20 +1193,28 @@ const carById = id => fleet.find(c => c.id === id);
    other definition would put the dot and the dialog at odds with the
    figure the admin is reading in the same row. */
 /* What has actually been received against a booking: confirmed
-   payments plus the deposit.
+   payments only.
 
-   The deposit is money in hand — the customer paid it by Zelle or
-   transfer to hold the car — so it counts towards the bill exactly as
-   a later payment does. Matches settlement() on the server. */
-/* What has actually been received: confirmed payments plus the
-   booking deposit.
+   The deposit used to be added here as well, on the reasoning that it
+   was money in hand. It is not, until someone has looked at it:
 
-   The deposit is money in hand — paid online to reserve the car — so
-   it counts towards the bill as any payment does. The ADVANCE is not
-   included: that is still owed at pickup, and refunded at handback.
-   Matches settlement() on the server. */
+     - the deposit screenshot is itself a payment proof, so once the
+       office ticks it off it is already counted in verifiedPaid, and
+       adding bookingDeposit counted the same money twice;
+
+     - before it is ticked, bookingDeposit is only what the customer
+       SAYS they sent (or what OCR read off the image), so adding it
+       credited an unchecked claim and a booking could look part paid,
+       or settled, on a screenshot nobody had checked.
+
+   The deposit is still shown in its own column — the office needs to
+   see the claim — it simply does not move the balance until the
+   admin confirms it, like every other payment.
+
+   The ADVANCE is not included either: that is still owed at pickup,
+   and refunded at handback. Matches settlement() on the server. */
 function amountPaid(b) {
-  return Number(b.verifiedPaid || 0) + Number(b.bookingDeposit || 0);
+  return Number(b.verifiedPaid || 0);
 }
 
 function amountDue(b) {
@@ -4467,6 +4475,12 @@ async function showPaymentProofs(bk) {
           : `<div class="pm-cash" title="Cash taken at the counter">Cash</div>`}
         <figcaption>
           <b>${p.amount != null ? esc(money(p.amount)) : 'Amount not confirmed'}</b>
+          ${p.stage === 'prebooking'
+            /* Which payment this is. The reservation deposit and a
+               later rent payment look identical as screenshots, and
+               the office is deciding whether to credit real money. */
+            ? '<span class="pm-stage">Reservation deposit</span>'
+            : ''}
           <span class="sub">${esc(timeAgo(p.uploadedAt))}${p.method === 'cash' ? ' · cash' : ''}</span>
           ${p.path ? `<span class="sub">${esc(scanNote)}</span>` : ''}
           ${p.note ? `<span class="sub">${esc(p.note)}</span>` : ''}

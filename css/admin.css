@@ -3344,3 +3344,19 @@ td[data-label="Status"] .rl-online {
   .enq-actions { width: 100%; }
   .enq-actions .btn { width: 100%; min-height: 44px; }
 }
+
+/* Which payment a screenshot is. A reservation deposit and a later
+   rent payment look identical as images, and the admin ticking the box
+   is deciding whether to credit real money against the balance. */
+.pm-stage {
+  display: inline-block;
+  margin: 3px 0 2px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(214, 40, 40, .1);
+  color: var(--red);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}

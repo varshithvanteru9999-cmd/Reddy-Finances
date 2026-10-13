@@ -3696,9 +3696,25 @@ async function settlement(booking) {
   const deposit = Number(b.booking_deposit || 0);
   const advance = Number(b.advance_amount || 0);
 
-  /* What the customer still has to hand over. */
+  /* What the customer still has to hand over.
+
+     The deposit is NOT added to `paid` here.
+
+     It used to be, and that was wrong twice over. The deposit
+     screenshot is itself a row in payment_proofs, so once the office
+     ticks it off it is already inside sums.paid — adding
+     booking_deposit as well counted the same money a second time. And
+     before anyone ticks it, booking_deposit holds what the CUSTOMER
+     SAYS they sent (or what OCR guessed), so adding it credited an
+     unchecked claim: a booking showed as part paid, or even settled,
+     on the strength of a screenshot nobody had looked at.
+
+     booking_deposit stays on the booking and is still reported below,
+     because the office needs to see the claim — it just no longer
+     moves the balance on its own. The admin's checkbox does that, the
+     same way it does for every other payment. */
   const due     = rent + advance;
-  const paid    = Number(sums.paid || 0) + deposit;
+  const paid    = Number(sums.paid || 0);
 
   return {
     rent:       round2(rent),
