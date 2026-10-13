@@ -7,7 +7,7 @@
    from the server — a stale booking list would be worse than an error.
 ------------------------------------------------------------------- */
 
-const CACHE = 'reddy-v24';
+const CACHE = 'reddy-v25';
 
 /* bookings.html and profile.html are deliberately NOT here: both show
    one signed-in customer's own data, so a cached copy can outlive a
