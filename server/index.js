@@ -55,8 +55,38 @@ const MIME = {
   '.mp4': 'video/mp4', '.webm': 'video/webm', '.txt': 'text/plain; charset=utf-8'
 };
 
+/* Database errors that must never reach a browser. Dozens of routes
+   answer with `{ error: err.message }`, which is right for a validation
+   failure the customer caused and wrong for a SQL error: the message
+   carries table and column names, and sometimes the values in the
+   failing query.
+
+   Caught here rather than in each route, because there are more than
+   forty of them and the next one added would miss it.
+
+   A missing table is the exception: it means the host has not been
+   migrated, the schema is in the repository anyway, and saying so turns
+   an opaque failure into one the office can act on. */
+const SQL_LEAK = /^(Table|Unknown column|Duplicate entry|Column|You have an error in your SQL|Cannot add or update a child row|Incorrect .* value|Data too long|Out of range)/i;
+
+function safeErrorBody(code, body) {
+  if (code < 500 || !body || typeof body.error !== 'string') return body;
+  const msg = body.error;
+
+  if (/^Table '.*' doesn't exist$/i.test(msg)) {
+    return { error: 'This feature is not set up on the server yet. Run '
+                  + '"node db/setup.js" on the host to create the missing '
+                  + 'tables, then try again.' };
+  }
+  if (SQL_LEAK.test(msg)) {
+    console.error('[suppressed SQL error]', msg);
+    return { error: 'Server error' };
+  }
+  return body;
+}
+
 const json = (res, code, body) => {
-  const payload = JSON.stringify(body);
+  const payload = JSON.stringify(safeErrorBody(code, body));
   res.writeHead(code, {
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(payload),
@@ -1733,6 +1763,23 @@ const server = http.createServer(async (req, res) => {
   } catch (err) {
     const status = err.status || 500;
     if (status >= 500) console.error(`[${req.method} ${url.pathname}]`, err.message);
+
+    /* A missing table is a deployment that has not been migrated, not a
+       bug and not a secret: the schema is in the repository. Saying so
+       turns an opaque "Server error" into something the office can act
+       on, because the fix is one command on the server.
+
+       This is the ONLY database error allowed through. Everything else
+       still answers "Server error", because a SQL string can carry
+       column names, values and query shape. */
+    if (err.code === 'ER_NO_SUCH_TABLE') {
+      return json(res, 503, {
+        error: 'This feature is not set up on the server yet. Run '
+             + '"node db/setup.js" on the host to create the missing '
+             + 'tables, then try again.'
+      });
+    }
+
     /* never leak a SQL error string to the client */
     json(res, status, { error: status >= 500 ? 'Server error' : err.message });
   }
