@@ -143,15 +143,23 @@ h1, h2, h3 { margin: 0; color: var(--text); font-family: var(--display); font-we
   flex: 0 0 auto;
   min-width: max-content;
 }
+/* The rail keeps its own width on a desktop header.
+
+   It was allowed to shrink below its tabs (min-width:0) and scroll to
+   compensate, which meant that at around 1300px it quietly slid left
+   and the first tab disappeared behind the brand — "OVERVIEW" showing
+   as "RVIEW". Scrolling is right on a phone and wrong here, where
+   there is a whole second row available.
+
+   min-content keeps every tab on screen; when they genuinely stop
+   fitting, the shell wraps them onto their own row at the 1200px
+   breakpoint below. */
 .admin-top .tabs {
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 0 1 auto;
+  min-width: min-content;
   margin: 0 auto;
   justify-content: center;
-  overflow-x: auto;
-  scrollbar-width: none;
 }
-.admin-top .tabs::-webkit-scrollbar { display: none; }
 /* The name holds one line.
 
    min-width:0 above lets this group be squeezed so the tabs can stay
@@ -1414,8 +1422,15 @@ td .sub { display: block; font-size: 11px; color: var(--text-3); margin-top: 2px
 }
 
 /* The top bar gained Install and Sign out, which pushes it past a
-   narrow laptop. Let it wrap and tighten the spacing there. */
-@media (max-width: 1200px) {
+   narrow laptop. Let it wrap and tighten the spacing there.
+
+   1360, not 1200. Nine tabs plus the brand and three controls stop
+   fitting one row at about 1340px, so between there and 1200 the bar
+   was overflowing the window sideways — and before the rail was
+   pinned to min-content it hid the first tab behind the brand
+   instead. The breakpoint now matches where the content actually
+   runs out of room. */
+@media (max-width: 1360px) {
   .admin-top .shell { flex-wrap: wrap; height: auto; padding-block: 12px; row-gap: 10px; }
   .admin-top .spacer { margin-left: auto; }
   /* Full row of their own, left-aligned and scrolling.
