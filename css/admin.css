@@ -3560,3 +3560,70 @@ input:focus, select:focus, textarea:focus {
 
 /* The period tabs above the stat row have the same problem. */
 .period-tabs { border: 1px solid var(--line); }
+
+/* ============ glass on the floating surfaces =====================
+
+   The panels got glass earlier; these did not, so every dialog, menu
+   and nav pill still read as a flat rectangle sitting on top of the
+   frosted ones. These are the surfaces that float ABOVE the page, so
+   what they blur is the dashboard itself rather than the video —
+   which is exactly what gives a dialog the sense of hovering over the
+   work rather than replacing it.
+
+   Each keeps an opaque fallback first, for browsers that cannot blur
+   and for the reduced-transparency setting. */
+
+/* --- the edit dialog ------------------------------------------- */
+.sheet-inner {
+  background: rgba(16, 18, 22, .96);      /* fallback */
+  box-shadow: 0 32px 80px rgba(0, 0, 0, .6),
+              inset 0 1px 0 rgba(255, 255, 255, .07);
+}
+
+/* --- the notification panel ------------------------------------ */
+.notif-panel {
+  background: rgba(20, 22, 26, .96);      /* fallback */
+}
+
+/* --- the tab rail ---------------------------------------------- */
+.tab {
+  background: rgba(16, 18, 22, .55);
+  transition: background .25s var(--ease), border-color .25s var(--ease),
+              color .25s var(--ease);
+}
+.tab:hover { background: rgba(28, 32, 37, .72); }
+/* The selected tab is the one place the red belongs: it marks where
+   you are, so it is lit rather than merely tinted. */
+.tab[aria-selected="true"] {
+  background: rgba(223, 0, 0, .16);
+  border-color: rgba(223, 0, 0, .5);
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .sheet-inner {
+    background: rgba(16, 18, 22, .82);
+    -webkit-backdrop-filter: blur(30px) saturate(140%);
+    backdrop-filter: blur(30px) saturate(140%);
+  }
+  .notif-panel {
+    background: rgba(20, 22, 26, .8);
+    -webkit-backdrop-filter: blur(26px) saturate(135%);
+    backdrop-filter: blur(26px) saturate(135%);
+  }
+  .tab {
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+  }
+}
+
+/* Someone who has asked the system for less transparency gets solid
+   surfaces. The effect is decoration; their setting is not. */
+@media (prefers-reduced-transparency: reduce) {
+  .sheet-inner, .notif-panel, .tab,
+  .stat, .card, .kpi, .table-wrap, .flow-steps li,
+  .period-tabs, .doc-editor, .doc-versions, .enq-card, .pm-item {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--panel-solid);
+  }
+}
