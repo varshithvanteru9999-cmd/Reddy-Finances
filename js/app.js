@@ -447,8 +447,21 @@ function initHeroSlides() {
     slides.forEach((s, k) => s.classList.toggle('on', k === i));
     dots.forEach((d, k) => d.classList.toggle('on', k === i));
   };
-  const start = () => { stop(); if (!calm) timer = setInterval(() => go(i + 1), 6500); };
-  const stop = () => { if (timer) clearInterval(timer); timer = null; };
+  /* Each message sets its own time on screen through data-hold, so the
+     opening and closing lines can be given longer than the ones in
+     between. A fixed interval gave a three-word message the same six
+     and a half seconds as a full sentence.
+
+     setTimeout rather than setInterval, because the delay has to be
+     read again for every message rather than fixed when the rotation
+     starts. */
+  const holdFor = n => Number(slides[n] && slides[n].dataset.hold) || 6000;
+  const start = () => {
+    stop();
+    if (calm) return;                 /* reduced motion: no auto-advance */
+    timer = setTimeout(() => { go(i + 1); start(); }, holdFor(i));
+  };
+  const stop = () => { if (timer) clearTimeout(timer); timer = null; };
 
   dots.forEach((d, k) => d.addEventListener('click', () => { go(k); start(); }));
 

@@ -84,10 +84,15 @@
       <span class="box b3"></span>
     </div>
 
+    <!-- One dot per message. They must stay in step with the slides
+         above: a missing dot leaves a message the visitor cannot jump
+         back to, and a spare one points at nothing. -->
     <div class="hero-slides" role="tablist" aria-label="Hero messages">
       <button type="button" class="on" aria-label="Message 1"></button>
       <button type="button" aria-label="Message 2"></button>
       <button type="button" aria-label="Message 3"></button>
+      <button type="button" aria-label="Message 4"></button>
+      <button type="button" aria-label="Message 5"></button>
     </div>
 
     <div class="hero-body shell">
@@ -101,17 +106,35 @@
              sentence that had been cut off mid-way. The headline now
              carries the whole statement and the line below supports it
              rather than completing it. -->
-        <div class="hero-slide on">
+        <!-- Five messages, each a finished statement, each true of the
+             business: monthly rentals with a one-month minimum out of
+             Irving, maintenance included, and the option to buy.
+
+             data-hold is how long that message stays up, in
+             milliseconds. The opening and closing lines are given
+             longer because they carry the most weight; the middle ones
+             move at a steadier pace. -->
+        <div class="hero-slide on" data-hold="7000">
           <p class="hs-head">Drive what<br>makes you <em>happy</em></p>
           <p class="hs-sub">Monthly car rentals in Irving, Texas</p>
         </div>
 
-        <div class="hero-slide">
+        <div class="hero-slide" data-hold="5500">
+          <p class="hs-head">One month<br>minimum, <em>no more</em></p>
+          <p class="hs-sub">Rent for as long as you need, not a day longer</p>
+        </div>
+
+        <div class="hero-slide" data-hold="5500">
+          <p class="hs-head">The price you<br>see is what<br>you <em>pay</em></p>
+          <p class="hs-sub">No hidden fees &middot; Maintenance and oil changes included</p>
+        </div>
+
+        <div class="hero-slide" data-hold="5500">
           <p class="hs-head">Rent today,<br>own it <em>tomorrow</em></p>
           <p class="hs-sub">Return your car and buy a brand new one</p>
         </div>
 
-        <div class="hero-slide split">
+        <div class="hero-slide split" data-hold="7000">
           <p class="hs-head">Drive<br>your<br>dream</p>
           <p class="hs-head red">Pay<br>now or<br>later</p>
         </div>

@@ -907,19 +907,22 @@ h1 em, h2 em, h3 em, .hero-word em { font-style: normal; color: var(--red); }
   transform: translateY(-50%);
   z-index: 3;
   display: grid;
-  gap: 26px;
+  gap: 18px;
 }
+/* Shorter bars than the rail began with: at five messages the old
+   58px bar and 26px gap came to over 400px, which ran past the foot of
+   the hero on a laptop screen. */
 .hero-slides button {
   display: block;
   width: 2px;
-  height: 58px;
+  height: 38px;
   padding: 0;
   border: 0;
   background: rgba(255, 255, 255, .85);
   cursor: pointer;
   transition: background .3s var(--ease), height .3s var(--ease);
 }
-.hero-slides button.on { background: var(--red); height: 74px; }
+.hero-slides button.on { background: var(--red); height: 52px; }
 
 /* ---- rotating hero messages ----
    The three slides share one grid cell, so the block keeps the height of
@@ -976,7 +979,11 @@ h1 em, h2 em, h3 em, .hero-word em { font-style: normal; color: var(--red); }
 .hs-head {
   margin: 0;
   font-family: var(--display);
-  font-size: clamp(30px, 5.3vw, 80px);
+  /* Was 5.3vw up to 80px, which filled most of the hero and pushed the
+     longer messages onto a third line. At 4.2vw / 62px the wording has
+     room to be a full sentence and the car behind it is still visible,
+     which is the point of putting it over footage. */
+  font-size: clamp(26px, 4.2vw, 62px);
   font-weight: 400;
   line-height: 1.1;
   letter-spacing: .075em;
@@ -987,8 +994,10 @@ h1 em, h2 em, h3 em, .hero-word em { font-style: normal; color: var(--red); }
 .hs-head em, .hs-head.red { font-style: normal; font-weight: 700; color: var(--red); }
 
 .hs-sub {
-  margin: clamp(16px, 2.2vw, 32px) 0 0;
-  font-size: clamp(11px, 1.15vw, 16px);
+  /* Closer to the headline now that the headline is smaller, so the
+     two still read as one block rather than two separate lines. */
+  margin: clamp(12px, 1.6vw, 22px) 0 0;
+  font-size: clamp(10.5px, 1.05vw, 15px);
   font-weight: 700;
   letter-spacing: .19em;
   text-transform: uppercase;
