@@ -184,7 +184,8 @@ h1, h2, h3 { margin: 0; color: var(--text); font-family: var(--display); font-we
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 16px;
+  /* 16px between three controls was 32px of the row spent on air. */
+  gap: 11px;
   /* Shrinks to share the bar with the brand and tabs, but never below
      what its own buttons need: with min-width:0 the group kept
      collapsing until "Install app" was clipped to "APP". min-content
@@ -195,7 +196,7 @@ h1, h2, h3 { margin: 0; color: var(--text); font-family: var(--display); font-we
 /* Same wrap, same fix: "Install app" and "Sign out" broke across two
    lines once the header tightened, which left the right-hand controls
    taller than the brand and tabs they sit beside. */
-.admin-top .to-site { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--text-2); white-space: nowrap; }
+.admin-top .to-site { font-size: 9.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--text-2); white-space: nowrap; }
 .admin-top .to-site:hover { color: var(--red); }
 
 /* ------------------------------ tabs ----------------------------- */
@@ -203,11 +204,19 @@ h1, h2, h3 { margin: 0; color: var(--text); font-family: var(--display); font-we
 .tabs { display: flex; gap: 0; }
 /* Seven tabs at the old 26px padding and .18em tracking ran the bar
    past the width of the shell, so both are pulled in. */
+/* Sized so all nine tabs, the brand and the three controls share one
+   row on an ordinary laptop. At 14px of padding and .1em of tracking
+   the rail alone wanted 838px, and the bar needed 1560px in total —
+   more than a 1440px screen has, so it wrapped on almost everything.
+
+   The savings come from the tracking and the side padding rather than
+   the type size: letter-spacing on nine uppercase labels adds up to
+   more width than a point of font size, and costs less legibility. */
 .tab {
-  padding: 8px 14px;
-  font-size: 10px;
+  padding: 8px 10px;
+  font-size: 9.5px;
   font-weight: 700;
-  letter-spacing: .1em;
+  letter-spacing: .055em;
   white-space: nowrap;
   text-transform: uppercase;
   color: var(--text-3);
@@ -1371,15 +1380,16 @@ td .sub { display: block; font-size: 11px; color: var(--text-3); margin-top: 2px
 
 /* Install button, beside "View site". */
 .admin-install {
-  padding: 6px 14px;
+  padding: 6px 12px;
   border: 1px solid var(--line-2);
   border-radius: 999px;
   background: transparent;
   cursor: pointer;
   font: inherit;
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 700;
-  letter-spacing: .16em;
+  /* .16em across "INSTALL APP" alone cost nearly 20px of the row. */
+  letter-spacing: .07em;
   text-transform: uppercase;
   color: var(--text-2);
   transition: color .2s, border-color .2s, background .2s;
@@ -1424,13 +1434,13 @@ td .sub { display: block; font-size: 11px; color: var(--text-3); margin-top: 2px
 /* The top bar gained Install and Sign out, which pushes it past a
    narrow laptop. Let it wrap and tighten the spacing there.
 
-   1360, not 1200. Nine tabs plus the brand and three controls stop
-   fitting one row at about 1340px, so between there and 1200 the bar
-   was overflowing the window sideways — and before the rail was
-   pinned to min-content it hid the first tab behind the brand
-   instead. The breakpoint now matches where the content actually
-   runs out of room. */
-@media (max-width: 1360px) {
+   1240, after the tabs and controls were tightened. The bar needed
+   1560px when every label carried wide tracking and 14px of side
+   padding, so it wrapped on all but the largest screens; at the
+   current sizing it needs 1210px, which an ordinary 1280px laptop
+   has. Below this it still wraps rather than squeezing the labels
+   into something unreadable. */
+@media (max-width: 1240px) {
   .admin-top .shell { flex-wrap: wrap; height: auto; padding-block: 12px; row-gap: 10px; }
   .admin-top .spacer { margin-left: auto; }
   /* Full row of their own, left-aligned and scrolling.
