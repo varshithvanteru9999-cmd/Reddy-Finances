@@ -1608,7 +1608,8 @@ td .sub { display: block; font-size: 11px; color: var(--text-3); margin-top: 2px
    is checked. Everything that rule imposes is undone here, and an
    explicit dark color-scheme makes the unchecked box read as dark
    rather than white-on-dark. */
-.cash-toggle input[type='checkbox'] {
+.cash-toggle input[type='checkbox'],
+.fee-cash input[type='checkbox'] {
   flex: none;
   width: 15px; height: 15px;
   min-width: 15px;
@@ -1621,11 +1622,13 @@ td .sub { display: block; font-size: 11px; color: var(--text-3); margin-top: 2px
   color-scheme: dark;
   cursor: pointer;
 }
-.cash-toggle input[type='checkbox']:focus-visible {
+.cash-toggle input[type='checkbox']:focus-visible,
+.fee-cash input[type='checkbox']:focus-visible {
   outline: 2px solid var(--red, #DF0000);
   outline-offset: 2px;
 }
-.cash-toggle input[type='checkbox']:disabled { cursor: wait; opacity: .6; }
+.cash-toggle input[type='checkbox']:disabled,
+.fee-cash input[type='checkbox']:disabled { cursor: wait; opacity: .6; }
 
 /* Checked state carries a text cue as well as the tick, so the row is
    readable at a glance and does not depend on colour alone. */
@@ -3359,4 +3362,33 @@ td[data-label="Status"] .rl-online {
   font-weight: 700;
   letter-spacing: .07em;
   text-transform: uppercase;
+}
+
+/* "Paid by cash" under the Pre-book fee figure.
+
+   The reservation fee can be handed over at the counter as well as
+   sent by transfer, so the column needs a way to record it. Set in a
+   lighter weight than .cash-toggle in the Status column: that one
+   reports how the whole booking was paid, this one settles a single
+   figure and should not compete with the amount above it.
+
+   The column is right-aligned (.num), so this is pushed to the right
+   to sit under its own figure rather than floating mid-cell. */
+.fee-cash {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.fee-cash:hover { color: var(--text-2); }
+
+@media (max-width: 900px) {
+  /* Stacked cards on a phone: the cell is no longer a right-aligned
+     column, so the control follows the text instead. */
+  .fee-cash { margin-top: 4px; }
 }

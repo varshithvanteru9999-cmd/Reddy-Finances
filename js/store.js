@@ -126,9 +126,10 @@ const uploadPaymentProof = (ref, file, extra = {}) =>
 
 /* Cash taken at the counter, with the amount. Joins the same ledger as
    an uploaded transfer so both channels add up. */
-const addCashPayment = (ref, { amount, note = '', pending = null } = {}) =>
+const addCashPayment = (ref, { amount, note = '', pending = null,
+                               stage = 'rental' } = {}) =>
   request(`/bookings/${encodeURIComponent(ref)}/cash-payment`,
-          { method: 'POST', body: JSON.stringify({ amount, note, pending }) });
+          { method: 'POST', body: JSON.stringify({ amount, note, pending, stage }) });
 
 /* What a booking owes and has taken, across both channels. */
 const bookingSettlement = ref =>
