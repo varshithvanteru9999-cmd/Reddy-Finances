@@ -981,7 +981,16 @@ function renderFleet() {
     <tr data-id="${esc(c.id)}">
       <td class="col-main">
         <div class="cell-car">
-          <img class="thumb" src="${esc(c.image)}" alt=""
+          <!-- lazy, and sized in the markup.
+
+               These are 40px thumbnails of photos that are 200-350KB
+               each, and every row fetched its own at full size the
+               moment the Fleet tab rendered: 3.5MB of car photography
+               to draw a column of thumbnails. loading="lazy" holds back
+               the rows below the fold, and the width/height stop the
+               table reflowing as each one arrives. -->
+          <img class="thumb" src="${esc(c.image)}" alt="" loading="lazy"
+               decoding="async" width="78" height="52"
                onerror="this.outerHTML='<span class=\\'thumb-fallback\\'>NO IMAGE</span>'">
           <span>
             <span class="name-cell">${esc(c.year)} ${esc(c.name)}</span>

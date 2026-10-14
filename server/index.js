@@ -11,6 +11,7 @@ const http = require('http');
 const fs = require('fs');
 const fsp = require('fs/promises');
 const path = require('path');
+const zlib = require('zlib');
 const db = require('./db');
 const auth = require('./auth');
 const security = require('./security');
@@ -1676,6 +1677,40 @@ async function serveStatic(req, res, url) {
       'Content-Length': end - start + 1
     });
     return fs.createReadStream(filePath, { start, end }).pipe(res);
+  }
+
+  /* ------------------------------------------------------------------
+     Compression.
+
+     Nothing was compressed, so every visitor downloaded the full text
+     of the site: js/admin.js alone is 222KB on the wire where gzip
+     makes it about 50KB, and a dashboard load came to 13MB. On a
+     phone over mobile data that is most of the wait.
+
+     Only text is worth compressing. JPEG, PNG, WebM and the OCR data
+     are already compressed; running them through gzip burns CPU to
+     make them very slightly larger.
+
+     Not applied to a range request: the offsets in Content-Range refer
+     to the file on disk, and compressing the slice would make them
+     lie. Video is excluded by type anyway, so this only guards the
+     case of a byte range asked for over a text file. */
+  const COMPRESSIBLE = /^(text\/|application\/(javascript|json|xml|manifest))/i;
+  const accepts = String(req.headers['accept-encoding'] || '');
+  const wantsGzip = /\bgzip\b/.test(accepts);
+
+  if (wantsGzip && COMPRESSIBLE.test(type) && stat.size > 1024) {
+    res.writeHead(200, {
+      ...headers,
+      'Content-Encoding': 'gzip',
+      /* Caches must keep the compressed and plain copies apart. */
+      'Vary': 'Accept-Encoding'
+    });
+    /* Level 6 is the default for a reason: level 9 costs noticeably
+       more CPU per request for a fraction of a percent of size. */
+    return fs.createReadStream(filePath)
+      .pipe(zlib.createGzip({ level: 6 }))
+      .pipe(res);
   }
 
   res.writeHead(200, { ...headers, 'Content-Length': stat.size, 'Accept-Ranges': 'bytes' });
