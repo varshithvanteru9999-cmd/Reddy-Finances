@@ -131,8 +131,39 @@ h1, h2, h3 { margin: 0; color: var(--text); font-family: var(--display); font-we
    otherwise the wider side pushes the tabs off-centre. Giving both
    `flex: 1` and letting the tabs keep their natural width does it
    without hard-coding either side. */
-.admin-brand { display: flex; align-items: baseline; gap: 9px; flex: 1 1 0; min-width: 0; }
-.admin-top .tabs { flex: 0 0 auto; margin: 0 auto; }
+/* The brand holds its width; the tabs give way.
+
+   Both groups used to shrink, so a tight header squeezed the name
+   until it wrapped. Now the brand is fixed to its content and the tab
+   rail is the flexible one — it scrolls sideways, so losing width
+   costs it nothing, where the brand and the buttons have nowhere to
+   put the overflow but a second line. */
+.admin-brand {
+  display: flex; align-items: baseline; gap: 9px;
+  flex: 0 0 auto;
+  min-width: max-content;
+}
+.admin-top .tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0 auto;
+  justify-content: center;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.admin-top .tabs::-webkit-scrollbar { display: none; }
+/* The name holds one line.
+
+   min-width:0 above lets this group be squeezed so the tabs can stay
+   centred, and at around 1280px the squeeze was enough to break
+   "Reddy Finances" across two lines — the brand sat at double height
+   and pushed the header out of line with the tabs beside it.
+
+   nowrap stops the break; flex-shrink:0 stops the squeeze reaching it
+   in the first place, so the space is taken from the gap rather than
+   from the words. */
+.admin-brand .name,
+.admin-brand .tag { white-space: nowrap; flex: 0 0 auto; }
 .admin-brand .name { font-family: 'Playfair Display', Georgia, serif; font-style: italic; font-size: 18px; color: #fff; }
 .admin-brand .tag { font-size: 9px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: var(--red); }
 /* Brand and controls are the two outer groups; giving both the same
@@ -146,10 +177,17 @@ h1, h2, h3 { margin: 0; color: var(--text); font-family: var(--display); font-we
   align-items: center;
   justify-content: flex-end;
   gap: 16px;
-  flex: 1 1 0;
-  min-width: 0;
+  /* Shrinks to share the bar with the brand and tabs, but never below
+     what its own buttons need: with min-width:0 the group kept
+     collapsing until "Install app" was clipped to "APP". min-content
+     is the floor, and the tabs give way first because they can scroll. */
+  flex: 1 1 auto;
+  min-width: min-content;
 }
-.admin-top .to-site { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--text-2); }
+/* Same wrap, same fix: "Install app" and "Sign out" broke across two
+   lines once the header tightened, which left the right-hand controls
+   taller than the brand and tabs they sit beside. */
+.admin-top .to-site { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--text-2); white-space: nowrap; }
 .admin-top .to-site:hover { color: var(--red); }
 
 /* ------------------------------ tabs ----------------------------- */
@@ -1380,7 +1418,23 @@ td .sub { display: block; font-size: 11px; color: var(--text-3); margin-top: 2px
 @media (max-width: 1200px) {
   .admin-top .shell { flex-wrap: wrap; height: auto; padding-block: 12px; row-gap: 10px; }
   .admin-top .spacer { margin-left: auto; }
-  .tabs { order: 3; width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  /* Full row of their own, left-aligned and scrolling.
+
+     This has to beat the centred rule above it: with `margin: 0 auto`
+     still applying, the rail stayed centred on a row it now owned
+     outright and slid left under the brand name. Selector matched to
+     the same specificity so it actually wins. */
+  .admin-top .tabs {
+    order: 3;
+    width: 100%;
+    flex: 1 0 100%;
+    margin: 0;
+    justify-content: flex-start;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* The brand keeps the first row with the buttons. */
+  .admin-actions { margin-left: auto; }
 }
 @media (max-width: 700px) {
   .admin-top .shell { gap: 10px; }
