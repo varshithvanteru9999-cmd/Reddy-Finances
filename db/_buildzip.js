@@ -62,7 +62,17 @@ const SKIP_FILE = [
   /^seed-demo\.js$/i,
   /^seed-sample\.sql$/i,
   /^test-data\.sql$/i,
-  /^live-backup-.*\.json$/i
+  /^live-backup-.*\.json$/i,
+  /* Commercial and working documents. The rate, the quoted total and
+     the hours behind it are between us and the client, and none of it
+     is needed to run the server. They are already kept out of the
+     repository; there is no reason to ship them to the host either. */
+  /^PROJECT-SCOPE-AND-COSTING\.md$/i,
+  /^DEVELOPMENT-AND-TIME-BREAKDOWN\.md$/i,
+  /^Reddy-Finances-.*\.pdf$/i,
+  /* Notes for us, not for the server. */
+  /^CHANGELOG\.md$/i,
+  /^DEPLOY(MENT)?\.md$/i
 ];
 
 let copied = 0;
