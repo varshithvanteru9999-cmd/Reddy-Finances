@@ -933,6 +933,46 @@ h1 em, h2 em, h3 em, .hero-word em { font-style: normal; color: var(--red); }
 }
 .hero-slide.on { opacity: 1; visibility: visible; }
 
+/* The lines arrive in order rather than all at once.
+
+   A message that appeared whole, then sat still for six seconds, read
+   as a static caption someone had left there — and the first one, cut
+   across two lines, looked unfinished. Letting the headline settle and
+   the line beneath follow it makes the message read as something being
+   said, and makes it obvious the panel is still working.
+
+   Only a fifth of a second apart: enough to be felt as a sequence, not
+   so slow that a visitor waits for the sentence to finish. */
+.hero-slide .hs-head,
+.hero-slide .hs-sub {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity .55s var(--ease), transform .55s var(--ease);
+}
+.hero-slide.on .hs-head,
+.hero-slide.on .hs-sub {
+  opacity: 1;
+  transform: none;
+}
+/* The headline leads; the supporting line follows it in. */
+.hero-slide.on .hs-head  { transition-delay: .10s; }
+.hero-slide.on .hs-sub   { transition-delay: .30s; }
+/* The split message has two headlines and no sub, so the second half
+   takes the later slot and the pair reads left then right. */
+.hero-slide.split.on .hs-head.red { transition-delay: .30s; }
+
+/* Someone who has asked for less motion gets the cross-fade only. */
+@media (prefers-reduced-motion: reduce) {
+  .hero-slide .hs-head,
+  .hero-slide .hs-sub {
+    transform: none;
+    transition: opacity .4s linear;
+  }
+  .hero-slide.on .hs-head,
+  .hero-slide.on .hs-sub,
+  .hero-slide.split.on .hs-head.red { transition-delay: 0s; }
+}
+
 .hs-head {
   margin: 0;
   font-family: var(--display);
