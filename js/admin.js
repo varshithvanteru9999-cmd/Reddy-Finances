@@ -840,75 +840,12 @@ async function askQueueCashAmount(ref) {
 
       (async () => {
         try {
-          /* stage: the money is the RESERVATION FEE, not rent. Without
-             it the payment was filed as an ordinary rent payment and
-             the Pre-book fee column stayed empty, so a fee collected in
-             cash looked uncollected. */
-          await addCashPayment(ref, { amount, stage: 'prebooking' });
+          await addCashPayment(ref, { amount });
           renderQueue();
           renderReleases();
           bookings = await reloadBookings();
           renderBookings();
-          renderActions();
-          toast(`${ref} — ${money(amount)} reservation fee in cash recorded`);
-        } catch (err) {
-          toast(err.message, true);
-        }
-      })();
-    }
-  );
-}
-
-/* The reservation fee taken in cash, from the Actions tab.
-
-   Separate from askCashAmount, which settles the whole booking: the
-   figure here is the pre-booking fee, and it is recorded against the
-   prebooking stage so it lands in the Pre-book fee column rather than
-   among the rent payments. */
-async function askPrebookingCash(bk) {
-  const ref = bk.id;
-  let s;
-  try {
-    s = await bookingSettlement(ref);
-  } catch (err) {
-    toast(err.message, true);
-    return;
-  }
-
-  /* What the fee should be: the figure set on the vehicle when it was
-     released for pre-booking. The queue rows carry it; when they are
-     not loaded there is nothing to assume, so the office types it. */
-  const row = (queueRows || []).find(r => r.reference === ref);
-  const fee = row && row.prebooking_amount != null ? Number(row.prebooking_amount) : null;
-
-  const expected = fee != null ? ` — fee set at ${money(fee)}` : '';
-  const taken = Number(s.paid || 0) > 0 ? ` · already taken ${money(s.paid)}` : '';
-  const awaiting = s.unverified > 0
-    ? ` · ${s.unverified} screenshot${s.unverified > 1 ? 's' : ''} not yet checked`
-    : '';
-
-  openSheet(
-    'Reservation fee received in cash',
-    `${ref}${expected}${taken}${awaiting}`,
-    [
-      /* Empty on purpose: the amount is the one thing that must be read
-         off the cash in hand, not accepted from the screen. */
-      { key: 'pbCash', label: 'Amount collected', type: 'number',
-        value: '', placeholder: '0.00' }
-    ],
-    () => {
-      const raw = $('f_pbCash').value.trim();
-      if (raw === '') return 'Enter the amount collected';
-      const amount = Number(raw);
-      if (!isFinite(amount) || amount <= 0) return 'Enter a valid amount';
-
-      (async () => {
-        try {
-          await addCashPayment(ref, { amount, stage: 'prebooking' });
-          bookings = await reloadBookings();
-          renderActions(); renderBookings(); renderOverview();
-          renderQueue();
-          toast(`${ref} — ${money(amount)} reservation fee in cash recorded`);
+          toast(`${ref} — ${money(amount)} in cash recorded`);
         } catch (err) {
           toast(err.message, true);
         }
@@ -3526,23 +3463,7 @@ function renderActions() {
                         title="${esc(`${n} payment${n > 1 ? 's' : ''}: ${bits.join(' + ')}`)}"
                 >${money(paid)}${n > 1 ? `<small>${n}&nbsp;payments</small>` : ''}</button>`;
       })()}</td>
-      <td class="num" data-label="Pre-book fee">
-        ${depositCell(b)}
-        ${/* The reservation fee can be handed over in cash at the
-             counter, not only sent by transfer. Without this the column
-             could only ever show a fee that arrived with a screenshot,
-             so a customer who paid cash left it empty and the office
-             had nothing to tick.
-
-             Hidden once a fee is recorded: the job is done, and an open
-             checkbox beside a figure invites a second entry for the
-             same money. */''}
-        ${!Number(b.prebookingPaid || 0) ? `
-          <label class="fee-cash" title="The reservation fee was handed over in cash">
-            <input type="checkbox" data-fee-cash="${esc(b.id)}">
-            Paid by cash
-          </label>` : ''}
-      </td>
+      <td class="num" data-label="Pre-book fee">${depositCell(b)}</td>
       <td class="num toll-cell" data-label="Pending">
         <input type="number" min="0" step="0.01" inputmode="decimal"
                class="toll-input${b.pending ? ' has-pending' : ''}" data-pending="${esc(b.id)}"
@@ -4058,23 +3979,6 @@ $('actReset').addEventListener('click', async () => {
    office can record a payment while reviewing a request rather than
    switching tabs to do it. Both handlers mirror the Bookings ones. */
 $('actRows').addEventListener('change', e => {
-  /* The reservation fee, taken in cash at the counter.
-
-     Checked before the booking-wide [data-cash] box below, because
-     that one matches any input carrying a data-cash attribute and
-     would otherwise swallow this and open the wrong dialog. */
-  const feeBox = e.target.closest('input[data-fee-cash]');
-  if (feeBox) {
-    const ref = feeBox.dataset.feeCash;
-    const bk = bookings.find(b => b.id === ref);
-    if (!bk || !feeBox.checked) return;
-    /* Unticked until the save succeeds, so an abandoned dialog leaves
-       no trace of a fee that was never collected. */
-    feeBox.checked = false;
-    askPrebookingCash(bk);
-    return;
-  }
-
   /* Paid by cash — opens the amount dialog, same as Bookings. */
   const box = e.target.closest('input[data-cash]');
   if (box) {

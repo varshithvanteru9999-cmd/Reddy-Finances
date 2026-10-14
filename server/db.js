@@ -3750,11 +3750,10 @@ async function syncPaymentMethod(bookingId) {
    recording it is the person who took it. The pending balance is then
    re-derived from everything paid rather than overwritten, so a cash
    payment that follows an online one does not erase it. */
-async function addCashPayment(bookingRef, { amount, note = '', pending = null,
-                                            stage = 'rental' } = {}) {
+async function addCashPayment(bookingRef, { amount, note = '', pending = null } = {}) {
   const ref = safeRef(bookingRef);
   const [[booking]] = await pool.query(
-    'SELECT id, reference, booking_deposit FROM bookings WHERE reference = ?', [ref]
+    'SELECT id, reference FROM bookings WHERE reference = ?', [ref]
   );
   if (!booking) throw Object.assign(new Error('Booking not found'), { status: 404 });
 
@@ -3763,35 +3762,12 @@ async function addCashPayment(bookingRef, { amount, note = '', pending = null,
     throw Object.assign(new Error('Enter a valid cash amount'), { status: 400 });
   }
 
-  /* The reservation fee can be handed over in cash at the counter, not
-     only sent by transfer. This was hard-coded to 'rental', so a fee
-     paid in cash was recorded as an ordinary rent payment: the booking
-     took the money but the Pre-book fee column stayed empty and the
-     office had no way to show the fee had been collected. */
-  const paidStage = stage === 'prebooking' ? 'prebooking' : 'rental';
-
   await pool.query(
     `INSERT INTO payment_proofs
        (booking_id, file_path, method, amount, note, stage, verified_at)
-     VALUES (?, NULL, 'cash', ?, ?, ?, NOW())`,
-    [booking.id, round2(paid), String(note || '').slice(0, 300) || null, paidStage]
+     VALUES (?, NULL, 'cash', ?, ?, 'rental', NOW())`,
+    [booking.id, round2(paid), String(note || '').slice(0, 300) || null]
   );
-
-  /* The claim on the booking, so the Pre-book fee column has a figure
-     to show — the same field an uploaded deposit screenshot writes.
-
-     Only when there is nothing there yet: a second cash payment must
-     not silently rewrite a fee already recorded. Cash counts toward
-     the balance through the ledger row above, which the office has by
-     definition confirmed by taking the money, so this figure is for
-     display and does not double-count. */
-  if (paidStage === 'prebooking' && !Number(booking.booking_deposit || 0)) {
-    await pool.query(
-      `UPDATE bookings SET booking_deposit = ?
-        WHERE id = ? AND (booking_deposit IS NULL OR booking_deposit = 0)`,
-      [round2(paid), booking.id]
-    );
-  }
 
   await syncPaymentMethod(booking.id);
   const s = await settlement(booking.id);

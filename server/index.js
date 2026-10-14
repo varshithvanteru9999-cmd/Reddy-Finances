@@ -513,10 +513,7 @@ async function api(req, res, url) {
       const body = await readBody(req).catch(() => ({}));
       try {
         return json(res, 200, await db.addCashPayment(decodeURIComponent(id), {
-          amount: body.amount, note: body.note, pending: body.pending,
-          /* 'prebooking' when the office is recording the reservation
-             fee handed over in cash, rather than a rent payment. */
-          stage: body.stage
+          amount: body.amount, note: body.note, pending: body.pending
         }));
       } catch (err) {
         return json(res, err.status || 500, { error: err.message });
