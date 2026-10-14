@@ -89,22 +89,26 @@ h1, h2, h3 { margin: 0; color: var(--text); font-family: var(--display); font-we
 .backdrop video { width: 100%; height: 100%; object-fit: cover; }
 /* The scrim over the backdrop video.
 
-   It was 88% black at the top and 93% at the bottom, which left 7-12%
-   of the clip showing: the video played perfectly and still read as a
-   flat dark panel, so the dashboard looked like it had a still photo
-   behind it rather than moving footage.
+   Three settings, and this is the third:
 
-   Now 55% to 68%, dark enough that white headings and the grey
-   secondary text keep their contrast, light enough that the traffic is
-   plainly moving. Deeper at the foot than the head because the long
-   tables scroll down there and need the quieter ground. */
+     .88 / .93  where it began. Only 7-12% of the clip came through, so
+                the video played perfectly and still read as a flat
+                dark panel — a still photo, not footage.
+     .55 / .68  the clip plainly moving, but the dashboard lost the
+                near-black weight it is designed around.
+     .76 / .86  here. The traffic is still visible behind the glass,
+                and the page reads dark again, which is what the white
+                headings and the one red accent were drawn for.
+
+   Deeper at the foot than the head, because the long tables scroll
+   down there and need the quieter ground. */
 .backdrop::after {
   content: '';
   position: absolute;
   inset: 0;
   background:
     radial-gradient(120% 80% at 50% 0%, rgba(223, 0, 0, .12) 0%, transparent 60%),
-    linear-gradient(180deg, rgba(8, 9, 11, .55) 0%, rgba(8, 9, 11, .68) 100%);
+    linear-gradient(180deg, rgba(8, 9, 11, .76) 0%, rgba(8, 9, 11, .86) 100%);
 }
 
 .shell { width: 100%; max-width: 1560px; margin-inline: auto; padding-inline: var(--gut); }
