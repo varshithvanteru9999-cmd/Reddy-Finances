@@ -18,8 +18,26 @@
      This is where the work is read, so it wins over the decoration:
      opaque enough to read a column of money against, translucent
      enough that the backdrop still shows at the edges. */
-  --panel:     rgba(18, 20, 23, .92);
-  --panel-2:   rgba(28, 31, 35, .92);
+  /* Frosted glass over the city clip.
+
+     The panels were flat fills at 92% — opaque enough to read against,
+     but they sat on the video like cards laid on a photograph. Glass
+     instead: a lighter fill that lets the backdrop through, with a
+     blur behind it so what comes through is colour and movement rather
+     than legible detail competing with the figures.
+
+     .72 with a 22px blur, not .92 flat. The blur is what makes the
+     lower opacity safe — without it this would be the washed-out
+     chart problem again. Browsers that cannot blur fall back to the
+     opaque fill below, so nothing becomes unreadable. */
+  --panel:     rgba(20, 23, 27, .72);
+  --panel-2:   rgba(32, 36, 41, .72);
+  --panel-solid: rgba(18, 20, 23, .94);   /* the no-blur fallback */
+  --glass-blur: 22px;
+  /* A hairline of light along the top edge, the way a pane of glass
+     catches it. Sold separately from --line because it is brighter
+     than an ordinary divider. */
+  --glass-edge: rgba(255, 255, 255, .10);
   --line:      rgba(255, 255, 255, .13);
   --line-2:    rgba(255, 255, 255, .22);
   --text:      #FFFFFF;
@@ -3381,3 +3399,160 @@ td[data-label="Status"] .rl-online {
   letter-spacing: .07em;
   text-transform: uppercase;
 }
+
+/* ======================== frosted glass ==========================
+
+   Applied last so it reaches every panel surface regardless of where
+   that surface is defined above.
+
+   Three parts make glass read as glass rather than as a translucent
+   rectangle:
+
+     1. the blur, so the backdrop comes through as colour and motion
+        rather than detail the eye tries to resolve;
+     2. a saturation lift, because blurring alone drains the colour out
+        of what is behind it and leaves a grey smear;
+     3. a hairline of light along the top edge, which is what gives a
+        pane its thickness.
+
+   The fallback matters: backdrop-filter is unsupported on older
+   browsers and can be switched off for battery or accessibility. There
+   the fill stays at .94 and the panel is simply opaque — plainer, but
+   never unreadable, which is the only outcome that would be a bug. */
+
+.stat,
+.card,
+.kpi,
+.table-wrap,
+.flow-steps li,
+.period-tabs,
+.doc-editor,
+.doc-versions,
+.enq-card,
+.pm-item {
+  background: var(--panel-solid);          /* fallback first */
+  position: relative;
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .stat,
+  .card,
+  .kpi,
+  .table-wrap,
+  .flow-steps li,
+  .period-tabs,
+  .doc-editor,
+  .doc-versions,
+  .enq-card,
+  .pm-item {
+    background: var(--panel);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(135%);
+    backdrop-filter: blur(var(--glass-blur)) saturate(135%);
+  }
+
+  /* The lit top edge. Inset by a pixel so it sits inside the border
+     rather than doubling it, and fading out across the width so it
+     reads as a highlight catching one corner, not a drawn line.
+
+     .card already paints a red hairline in ::before, so it is given
+     the highlight through ::after instead of fighting over the slot. */
+  .stat::after,
+  .kpi::after,
+  .table-wrap::after,
+  .period-tabs::after,
+  .doc-editor::after,
+  .doc-versions::after,
+  .enq-card::after {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    background: linear-gradient(90deg,
+      var(--glass-edge) 0%, rgba(255,255,255,.04) 45%, transparent 85%);
+    pointer-events: none;
+  }
+}
+
+/* The stat row sits highest on the page, closest to the brightest part
+   of the clip, so it carries a touch more blur to keep the figures
+   clean against the sky. */
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .stat {
+    -webkit-backdrop-filter: blur(26px) saturate(140%);
+    backdrop-filter: blur(26px) saturate(140%);
+  }
+}
+
+/* Tables are the one place where legibility has to win outright: a
+   column of money read against moving traffic is a misread figure
+   waiting to happen. The wrapper keeps the glass; the rows inside sit
+   on a near-solid fill. */
+.table-wrap table { background: rgba(14, 16, 19, .82); }
+
+/* Blur is expensive to composite, and on a phone the panels fill the
+   screen anyway so there is almost no backdrop left to see through.
+   Dropping it there costs nothing visually and saves the scroll. */
+@media (max-width: 720px) {
+  .stat, .card, .kpi, .table-wrap, .flow-steps li,
+  .period-tabs, .doc-editor, .doc-versions, .enq-card, .pm-item {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--panel-solid);
+  }
+}
+
+/* ---- what the glass exposed ----
+
+   Two things sat directly on the backdrop and were readable only
+   because the backdrop used to be almost black. Now that the video
+   shows through, they need a surface of their own. */
+
+/* Fields were a 5% white tint — a wash over a dark panel, but a window
+   onto the traffic once the panel became glass. Dark enough now to be
+   a field in its own right, wherever it sits. */
+input, select, textarea {
+  background: rgba(10, 12, 15, .64);
+}
+input:focus, select:focus, textarea:focus {
+  background: rgba(10, 12, 15, .78);
+}
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  input, select, textarea {
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+  }
+}
+
+/* A panel's heading and its description sat on bare video, so a
+   building could cut straight through the sentence. A soft pad behind
+   the text lifts it off the clip without boxing it in like a card. */
+.panel-head h2,
+.panel-head p {
+  text-shadow: 0 2px 14px rgba(8, 9, 11, .95), 0 1px 3px rgba(8, 9, 11, .9);
+}
+
+/* Buttons in a panel heading sit on the backdrop, not on a panel, so
+   they need a surface of their own now that the backdrop is video.
+   "+ Add booking" was red text on a bright patch of sky and all but
+   disappeared. */
+.head-actions .btn {
+  background: rgba(10, 12, 15, .66);
+  border: 1px solid var(--line);
+}
+.head-actions .btn:hover { background: rgba(10, 12, 15, .82); }
+.head-actions .btn-red {
+  background: rgba(223, 0, 0, .18);
+  border-color: rgba(223, 0, 0, .55);
+  color: #fff;
+}
+.head-actions .btn-red:hover { background: var(--red); border-color: var(--red); }
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .head-actions .btn {
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+  }
+}
+
+/* The period tabs above the stat row have the same problem. */
+.period-tabs { border: 1px solid var(--line); }
