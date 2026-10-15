@@ -41,3 +41,7 @@ PROJECT-SCOPE-AND-COSTING.md
 DEVELOPMENT-AND-TIME-BREAKDOWN.md
 Reddy-Finances-Scope-and-Costing.pdf
 Reddy-Finances-Development-and-Time.pdf
+
+# Customer data backups taken by db/clear-customers.js — real names,
+# emails, phone numbers and licence numbers. Never commit these.
+db/backups/
